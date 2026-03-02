@@ -1,0 +1,19 @@
+# Composer dependencies
+/vendor/
+composer.lock
+
+# IDE / editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# PHP logs / temp
+*.log
+*.cache

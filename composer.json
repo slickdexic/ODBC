@@ -1,0 +1,23 @@
+{
+	"name": "mediawiki/odbc",
+	"type": "mediawiki-extension",
+	"description": "ODBC database connectivity and query extension for MediaWiki",
+	"license": "GPL-2.0-or-later",
+	"homepage": "https://www.mediawiki.org/wiki/Extension:ODBC",
+	"require": {
+		"php": ">=7.4.0",
+		"ext-odbc": "*",
+		"composer/installers": "^1.0 || ^2.0"
+	},
+	"suggest": {
+		"mediawiki/external-data": "For integration with External Data extension's parser functions (provides #get_db_data with ODBC support)"
+	},
+	"autoload": {
+		"classmap": [
+			"includes/"
+		]
+	},
+	"extra": {
+		"installer-name": "ODBC"
+	}
+}

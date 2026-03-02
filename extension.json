@@ -1,0 +1,78 @@
+{
+	"name": "ODBC",
+	"version": "1.0.2",
+	"author": [
+		"Paul (Nordstern Group)"
+	],
+	"url": "https://www.mediawiki.org/wiki/Extension:ODBC",
+	"descriptionmsg": "odbc-desc",
+	"license-name": "GPL-2.0-or-later",
+	"type": "parserhook",
+	"requires": {
+		"MediaWiki": ">= 1.39.0",
+		"platform": {
+			"php": ">= 7.4.0",
+			"ext-odbc": "*"
+		}
+	},
+	"MessagesDirs": {
+		"ODBC": [
+			"i18n"
+		]
+	},
+	"ExtensionMessagesFiles": {
+		"ODBCMagic": "ODBCMagic.php"
+	},
+	"AutoloadClasses": {
+		"ODBCHooks": "includes/ODBCHooks.php",
+		"ODBCParserFunctions": "includes/ODBCParserFunctions.php",
+		"ODBCConnectionManager": "includes/ODBCConnectionManager.php",
+		"ODBCQueryRunner": "includes/ODBCQueryRunner.php",
+		"SpecialODBCAdmin": "includes/specials/SpecialODBCAdmin.php",
+		"EDConnectorOdbcGeneric": "includes/connectors/EDConnectorOdbcGeneric.php"
+	},
+	"callback": "ODBCHooks::onRegistration",
+	"Hooks": {
+		"ParserFirstCallInit": "ODBCHooks::onParserFirstCallInit"
+	},
+	"SpecialPages": {
+		"ODBCAdmin": "SpecialODBCAdmin"
+	},
+	"AvailableRights": [
+		"odbc-admin",
+		"odbc-query"
+	],
+	"GroupPermissions": {
+		"sysop": {
+			"odbc-admin": true,
+			"odbc-query": true
+		}
+	},
+	"config": {
+		"ODBCSources": {
+			"value": {},
+			"description": "Associative array of ODBC data source configurations. Each key is a source ID, each value is an array with keys: dsn, user, password, driver (optional), server (optional), database (optional), options (optional), prepared (optional for named prepared statements)."
+		},
+		"ODBCAllowArbitraryQueries": {
+			"value": false,
+			"description": "If true, wiki editors with odbc-query permission can pass arbitrary SQL. If false, only prepared statements defined in ODBCSources are allowed. Note: Individual sources can override this with the 'allow_queries' setting."
+		},
+		"ODBCMaxRows": {
+			"value": 1000,
+			"description": "Maximum number of rows returned by any single ODBC query."
+		},
+		"ODBCQueryTimeout": {
+			"value": 30,
+			"description": "Query timeout in seconds."
+		},
+		"ODBCCacheExpiry": {
+			"value": 0,
+			"description": "Number of seconds to cache query results. 0 means no caching. When enabled, query results are cached per unique SQL+parameters+maxRows combination. Cache is automatically invalidated on expiry; there is no manual invalidation. Choose expiry time based on how stale data can be."
+		},
+		"ODBCExternalDataIntegration": {
+			"value": true,
+			"description": "If true and External Data extension is installed, register as a connector for External Data. Must be set before extension loading."
+		}
+	},
+	"manifest_version": 2
+}

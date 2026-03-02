@@ -1,0 +1,56 @@
+{
+	"@metadata": {
+		"authors": [
+			"Paul (Nordstern Group)"
+		]
+	},
+	"odbc-desc": "Provides ODBC database connectivity and query capabilities for MediaWiki, with standalone parser functions and External Data extension integration.",
+
+	"odbc-error-unknown-source": "ODBC error: Unknown data source \"$1\". Check $wgODBCSources in LocalSettings.php.",
+	"odbc-error-connect-failed": "ODBC error: Could not connect to source \"$1\": $2",
+	"odbc-error-arbitrary-not-allowed": "ODBC error: Arbitrary SQL queries are not allowed. Use prepared statements, or set $wgODBCAllowArbitraryQueries = true.",
+	"odbc-error-no-source": "ODBC error: No data source specified. Use source= or db= parameter.",
+	"odbc-error-no-from": "ODBC error: No table specified. Use from= parameter.",
+	"odbc-error-no-template": "ODBC error: No template specified. Use template= parameter.",
+	"odbc-error-no-prepared": "ODBC error: No prepared statements configured for source \"$1\".",
+	"odbc-error-prepared-not-found": "ODBC error: Prepared statement \"$1\" not found for source \"$2\".",
+	"odbc-error-empty-query": "ODBC error: Empty query.",
+	"odbc-error-prepare-failed": "ODBC error: Failed to prepare statement: $1",
+	"odbc-error-execute-failed": "ODBC error: Failed to execute statement: $1",
+	"odbc-error-query-failed": "ODBC error: Query failed: $1",
+	"odbc-error-illegal-input": "ODBC error: Illegal SQL pattern \"$1\" found in parameter \"$2\".",
+	"odbc-error-permission": "ODBC error: You do not have permission to execute ODBC queries.",
+	"odbc-error-admin-select-only": "ODBC error: Only SELECT queries are allowed from the admin interface.",
+	"odbc-error-identifier-too-long": "ODBC error: Identifier in \"$1\" is too long (max 128 characters).",
+	"odbc-error-invalid-identifier": "ODBC error: Invalid identifier \"$1\" in \"$2\". Only alphanumeric characters, underscores, and dots are allowed.",
+
+	"odbc-ed-error-illegal": "ODBC connector error: Illegal SQL pattern \"$1\" found in \"$2\" parameter.",
+	"odbc-error-invalid-token": "ODBC error: Invalid security token. Please try again.",
+
+	"odbc-test-success": "Successfully connected to ODBC source \"$1\".",
+
+	"odbc-admin-title": "ODBC Data Source Administration",
+	"odbc-admin-intro": "The following ODBC data sources are configured in <code>$wgODBCSources</code>:",
+	"odbc-admin-no-sources": "No ODBC data sources are configured. Add entries to <code>$wgODBCSources</code> in LocalSettings.php.",
+	"odbc-admin-col-id": "Source ID",
+	"odbc-admin-col-driver": "Driver / DSN",
+	"odbc-admin-col-server": "Server",
+	"odbc-admin-col-database": "Database",
+	"odbc-admin-col-actions": "Actions",
+	"odbc-admin-col-name": "Column Name",
+	"odbc-admin-action-test": "Test Connection",
+	"odbc-admin-action-tables": "Browse Tables",
+	"odbc-admin-action-query": "Test Query",
+	"odbc-admin-test-title": "Connection Test: $1",
+	"odbc-admin-tables-title": "Tables in: $1",
+	"odbc-admin-no-tables": "No tables found (or no permission to list tables).",
+	"odbc-admin-columns-title": "Columns in $1 ($2)",
+	"odbc-admin-no-columns": "No columns found for this table.",
+	"odbc-admin-query-title": "Test Query: $1",
+	"odbc-admin-query-intro": "Enter a SQL query to execute against this data source (max 100 rows returned):",
+	"odbc-admin-query-sql": "Query executed",
+	"odbc-admin-query-run": "Run Query",
+	"odbc-admin-query-results-title": "Query Results: $1",
+	"odbc-admin-query-row-count": "$1 {{PLURAL:$1|row|rows}} returned.",
+	"odbc-admin-back": "← Back to ODBC Data Sources"
+}
