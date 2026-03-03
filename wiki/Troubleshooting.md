@@ -68,7 +68,7 @@ The error appears inline where the parser function call is. Common messages:
 | `Unknown source: 'my-source'` | The `source=` value doesn't match any key in `$wgODBCSources`. Check spelling and case. |
 | `Arbitrary SQL not allowed` | `$wgODBCAllowArbitraryQueries` is `false` and the source doesn't have `allow_queries = true`. Use a prepared statement or enable ad-hoc queries. |
 | `Unknown prepared query 'query-name'` | The `query=` name doesn't match any key in the source's `prepared` array. Check spelling and the config. |
-| `Illegal SQL pattern 'UNION'` | The word "union" appears in your query (including within an identifier). See KI-024. |
+| `Illegal SQL pattern 'UNION'` | Your query contains a literal `UNION` keyword, which is blocked by design. If `UNION` appears only as part of an identifier (e.g. `TRADE_UNION_ID`), this is fixed in v1.1.0+. On older versions, use a prepared statement. |
 | `ODBC error: [driver message]` | The ODBC driver returned an error. Check the driver message for specifics. |
 | `Query returned no results` | Not an error — the query ran but found no rows. Check your WHERE conditions and data. |
 
@@ -97,9 +97,11 @@ You're trying to use `from=`, `where=`, etc. but arbitrary queries are disabled.
 
 ### "Illegal SQL pattern 'UNION'" — but query has no UNION
 
-This is KI-024. The word "union" appears somewhere in the query as a substring of an identifier (e.g., a table named `TRADE_UNION` or a column named `UNION_ID`). The sanitizer matches "UNION" as a substring, not as a keyword.
+> **Note:** If you are running v1.1.0 or later, the specific case described below is **fixed** (KI-024, resolved in v1.1.0). `UNION` is now matched as a whole word only — identifiers such as `TRADE_UNION_ID` and `LABOUR_UNION` are no longer blocked.
+>
+> If you are seeing this error on v1.1.0+, your query contains a **literal `UNION` keyword** (e.g. `UNION SELECT`), which is blocked by design. Use a prepared statement if a `UNION` query is legitimately required, or ask your DBA whether the query intent can be expressed without `UNION`.
 
-**Workaround:** Use a prepared statement — the SQL is in `LocalSettings.php` and never goes through the sanitizer.
+**On versions prior to v1.1.0:** The word "union" appeared somewhere in the query as a substring of an identifier (e.g., a table named `TRADE_UNION` or a column named `UNION_ID`). The sanitizer matched it as a literal substring. **Workaround (obsolete):** Use a prepared statement — the SQL lives in `LocalSettings.php` and is never sanitized.
 
 ---
 
@@ -191,7 +193,7 @@ By default only `sysop` has this right.
 
 ### "Connection pool exhausted" / "MAX_CONNECTIONS reached"
 
-In the README (v1.0.3 and earlier) there was a reference to a `MAX_CONNECTIONS` constant. This is now a configuration setting. Increase:
+In the README (**v1.0.2 and earlier**) there was a reference to a `MAX_CONNECTIONS` constant. This is now a configuration setting. Increase:
 ```php
 $wgODBCMaxConnections = 25;
 ```

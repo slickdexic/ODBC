@@ -1,0 +1,151 @@
+# CI pipeline for the MediaWiki ODBC Extension.
+#
+# Jobs:
+#   lint    — PHP syntax check on every supported PHP version (7.4 – 8.4).
+#             Runs on every push and pull_request.
+#   phpcs   — PHP_CodeSniffer with the MediaWiki coding standard.
+#             Runs on every push and pull_request.
+#   phpstan — PHPStan level 3 static analysis on includes/ and ODBCMagic.php.
+#             Uses stubs/MediaWikiStubs.php for MediaWiki type declarations.
+#             Runs on every push and pull_request.
+#   release — Guard against releasing with an undated [Unreleased] tag.
+#             Runs ONLY when a version tag (v*) is pushed, preventing false
+#             failures during normal development where [Unreleased] is expected.
+#
+# PHPUnit tests are planned for v2.0.0 (see improvement_plan.md P3-003).
+# Until then, linting, code-style, and static-analysis are the primary CI gates.
+
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  # ── PHP Syntax Lint ────────────────────────────────────────────────────────
+  lint:
+    name: PHP Syntax (${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ '7.4', '8.0', '8.1', '8.2', '8.3', '8.4' ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          # The ext-odbc extension is not available on GitHub-hosted runners.
+          # Syntax checking does not require a live ODBC driver — we deliberately
+          # do not install it here so the lint job stays fast and portable.
+          coverage: none
+          tools: none
+
+      - name: Check PHP syntax
+        run: |
+          ERRORS=0
+          while IFS= read -r -d '' file; do
+            if ! php -l "$file" > /dev/null 2>&1; then
+              php -l "$file"
+              ERRORS=$((ERRORS + 1))
+            fi
+          done < <(find includes ODBCMagic.php -name '*.php' -print0)
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "::error::$ERRORS PHP syntax error(s) found."
+            exit 1
+          fi
+          echo "All PHP files pass syntax check."
+
+  # ── PHP_CodeSniffer ────────────────────────────────────────────────────────
+  phpcs:
+    name: PHP_CodeSniffer (MediaWiki)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          # Hash composer.lock for reproducible cache keys. Falls back to composer.json
+          # if composer.lock does not yet exist (see KI-092 / P2-093).
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock', 'composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-progress --no-interaction --prefer-dist
+
+      - name: Run PHP_CodeSniffer
+        run: composer phpcs
+
+  # ── PHPStan Static Analysis ─────────────────────────────────────────────────
+  phpstan:
+    name: PHPStan (level 3)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock', 'composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-progress --no-interaction --prefer-dist
+
+      - name: Run PHPStan
+        run: composer phpstan
+
+  # ── Release Readiness ──────────────────────────────────────────────────────
+  # This job only runs when a version tag (v*) is pushed.
+  # During normal development, CHANGELOG.md SHOULD contain [Unreleased] — that
+  # is correct and expected. This gate prevents an accidentally undated release
+  # from being tagged and published on GitHub.
+  release-check:
+    name: Release Readiness Check
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for [Unreleased] tags
+        run: |
+          FAIL=0
+          if grep -q '\[Unreleased\]' CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::CHANGELOG.md contains [Unreleased]. Date the release before merging to main."
+            FAIL=1
+          fi
+          if grep -q '(Unreleased)' SECURITY.md; then
+            echo "::error file=SECURITY.md::SECURITY.md contains (Unreleased). Date the release before merging to main."
+            FAIL=1
+          fi
+          if [ "$FAIL" -ne 0 ]; then exit 1; fi
+          echo "Release readiness check passed — no [Unreleased] tags found."

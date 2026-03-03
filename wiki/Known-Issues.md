@@ -2,7 +2,7 @@
 
 This page summarises the currently open issues in the ODBC extension. For the complete historical issue log including resolved items, see [KNOWN_ISSUES.md](https://github.com/slickdexic/ODBC/blob/main/KNOWN_ISSUES.md) in the repository.
 
-Workarounds are provided where available. Issues marked with a fix version have a planned resolution in the improvement plan.
+Workarounds are provided where available.
 
 ---
 
@@ -11,135 +11,71 @@ Workarounds are provided where available. Issues marked with a fix version have 
 ### KI-008 — `SELECT *` Used as Default When `data=` Omits Columns
 
 **Severity:** Minor  
-**File:** `includes/ODBCQueryRunner.php`  
-**Planned fix:** v1.1.0 (P2-009 related)
+**File:** `includes/ODBCQueryRunner.php`
 
-When `data=` is omitted entirely, the extension falls back to `SELECT *` rather than restricting the query to only the columns needed. This can fetch significantly more data than necessary from the database.
+When `data=` is omitted entirely from `{{#odbc_query:}}`, the extension falls back to `SELECT *` rather than restricting the query to only the columns needed. This can fetch significantly more data than necessary from the database and may unintentionally expose sensitive columns in templates.
 
-**Workaround:** Explicitly map all columns you need in `data=`.
+A debug log warning is emitted to the `odbc` channel whenever this occurs (added v1.2.0), so operators can audit unintentional `SELECT *` usage.
 
----
-
-### KI-018 — No Per-Page Query Count Limit
-
-**Severity:** Medium  
-**File:** `includes/ODBCParserFunctions.php`  
-**Status: Fixed in v1.1.0** (P2-007)
-
-~~A single wiki page can call `{{#odbc_query:}}` an unlimited number of times. There is no `$wgODBCMaxQueriesPerPage` setting. A page with `{{#odbc_query:}}` in a widely-used template can generate an unexpectedly large number of database queries.~~
-
-A new `$wgODBCMaxQueriesPerPage` configuration key (default: `0` = no limit) is now available. Set it in `LocalSettings.php` to cap the number of `{{#odbc_query:}}` calls per page render. When the limit is reached, subsequent calls return a localised error message.
+**Workaround:** Explicitly map all required columns using `data=`, e.g. `data=name=FullName,dept=Department`.
 
 ---
 
-### KI-019 — `#odbc_value` Cannot Access Non-First Rows
-
-**Severity:** Minor  
-**File:** `includes/ODBCParserFunctions.php`  
-**Planned fix:** v2.0.0
-
-`{{#odbc_value: varname }}` always returns the value from the first result row. There is no syntax to access `varname[1]`, `varname[2]`, etc. Use `#for_odbc_table` to iterate all rows.
-
----
-
-### KI-020 — External Data Connector Has No Caching or UTF-8 Conversion
+### KI-020 — External Data Standalone Mode: No Result Caching
 
 **Severity:** Minor  
 **File:** `includes/connectors/EDConnectorOdbcGeneric.php`  
-**Status:** ⚠ Partially fixed in v1.1.0 (P2-016)
+**Status:** ⚠ Partially fixed — see details below
 
-When queries are made through External Data's parser functions (`#get_db_data`), results are not cached regardless of `$wgODBCCacheExpiry`, and non-UTF-8 encoded data from the database is not automatically converted. The native ODBC parser functions (`#odbc_query`) do not have this limitation.
+When queries are made through External Data's parser functions (`#get_db_data`) using **standalone mode** (direct ODBC credentials in `$wgExternalDataSources` with no `odbc_source` key), query results are not cached regardless of `$wgODBCCacheExpiry`.
 
-**What was fixed in v1.1.0:** When a `$wgExternalDataSources` entry references a `$wgODBCSources` source via the `odbc_source` key, queries are now routed through `ODBCQueryRunner::executeRawQuery()`. This means `odbc_source`-mode connections gain `$wgODBCCacheExpiry` result caching, UTF-8 encoding conversion, and audit logging — on par with native parser functions.
+**What has been fixed over successive releases:**
 
-**What remains open:** Standalone External Data connections (those with direct ODBC credentials in `$wgExternalDataSources`, no `odbc_source` key) still do not apply `$wgODBCCacheExpiry` caching. UTF-8 conversion is applied row-by-row in standalone mode (added v1.1.0).
+- **v1.1.0 (P2-016):** Sources referenced via `odbc_source` now route through `ODBCQueryRunner::executeRawQuery()` and gain full caching, UTF-8 conversion, and audit logging — on par with native parser functions.
+- **v1.1.0:** UTF-8 encoding conversion is now applied row-by-row in standalone mode.
+- **v1.5.0 (KI-074):** Standalone mode now applies `$wgODBCQueryTimeout` (or per-source `timeout=`) via `odbc_prepare()` / `odbc_setoption()` / `odbc_execute()`. Previously `odbc_exec()` was used with no timeout.
 
-**Workaround:** Use the native ODBC parser functions where possible, or configure sources via `$wgODBCSources` and reference them with `odbc_source` in `$wgExternalDataSources`.
+**What remains open:** Standalone External Data connections (those with direct ODBC credentials in `$wgExternalDataSources`, no `odbc_source` key) still do not apply `$wgODBCCacheExpiry` caching.
 
----
+**Workaround:** Configure sources via `$wgODBCSources` and reference them with the `odbc_source` key in `$wgExternalDataSources`. This mode gains caching, UTF-8 conversion, timeout enforcement, and audit logging.
 
-### KI-023 — `pingConnection()` Fails on MS Access
-
-**Severity:** High  
-**File:** `includes/ODBCConnectionManager.php`  
-**Status: Fixed in v1.1.0** (P2-017)
-
-~~The connection pool liveness probe executes `SELECT 1`, which MS Access (Jet/ACE) does not support without a `FROM` clause. Every cached connection to an MS Access source fails the ping, is discarded, and a new connection is opened on the next query. This defeats connection pooling for Access.~~
-
-The extension now detects Access drivers and uses `SELECT 1 FROM MSysObjects WHERE 1=0` as its liveness probe. Connection pooling works correctly for MS Access.
-
----
-
-### KI-024 — `UNION` Sanitizer Blocks Valid Identifiers
-
-**Severity:** Moderate  
-**File:** `includes/ODBCQueryRunner.php`, `sanitize()`  
-**Status: Fixed in v1.1.0** (P2-018)
-
-~~The word `UNION` is matched as a substring in the SQL sanitizer. Any table name, column name, or value containing "union" (e.g., `TRADE_UNION`, `LABOUR_UNION_ID`) is incorrectly blocked.~~
-
-`UNION` is now matched with strict word boundaries (`\bUNION\b`), so identifiers merely containing "union" are no longer blocked.
-
----
-
-### KI-025 — `buildConnectionString()` Does Not Escape Special Characters in Values
-
-**Severity:** Moderate  
-**File:** `includes/ODBCConnectionManager.php`  
-**Status: Fixed in v1.1.0** (P2-019)
-
-~~If a `$wgODBCSources` configuration value contains a semicolon (`;`), brace (`{`, `}`), these characters are not escaped in the constructed connection string.~~
-
-All connection-string values are now wrapped in `{...}` braces with internal `}` doubled when they contain `;`, `{`, or `}`, per the ODBC connection string specification.
-
----
-
-### KI-026 — `validateConfig()` Is Dead Code
-
-**Severity:** Minor  
-**File:** `includes/ODBCConnectionManager.php`  
-**Status: Fixed in v1.1.0** (P2-020)
-
-~~`ODBCConnectionManager::validateConfig()` exists and is documented, but is never called.~~
-
-`validateConfig()` is now called from `connect()` before any connection attempt. Invalid configurations produce a clear localised error message (`odbc-error-config-invalid`) rather than an opaque ODBC driver error.
-
----
-
-### KI-027 — ED Connector `odbc_source` Mode Always Uses LIMIT for SQL Server
-
-**Severity:** High  
-**File:** `includes/connectors/EDConnectorOdbcGeneric.php`  
-**Status: Fixed in v1.1.0** (P2-021)
-
-~~When using External Data's `odbc_source` reference mode, the driver name is not inherited from the referenced source. The SQL engine therefore cannot detect SQL Server and uses `LIMIT` syntax, causing a T-SQL syntax error.~~
-
-The ED connector now automatically inherits the `driver` value from the referenced `$wgODBCSources` entry. Correct `TOP`/`FIRST`/`LIMIT` syntax is applied regardless of which mode is used.
-
----
-
-### KI-028 — `$wgODBCExternalDataIntegration = 0` Does Not Disable Integration
-
-**Severity:** Minor  
-**File:** `includes/ODBCHooks.php`  
-**Status: Fixed in v1.1.0** (P2-022)
-
-~~The disable check uses `=== false` (strict identity). PHP integer `0`, `null`, and empty string `''` are falsy but not `=== false`. Setting `$wgODBCExternalDataIntegration = 0` will not disable integration.~~
-
-The check now uses `!$wgODBCExternalDataIntegration`, so any falsy value (`false`, `0`, `null`, `''`) correctly disables the External Data integration.
+```php
+// Instead of standalone credentials in $wgExternalDataSources:
+$wgODBCSources['my-source'] = [ 'driver' => '...', 'server' => '...', /* ... */ ];
+$wgExternalDataSources['my-source'] = [
+    'type'        => 'odbc_generic',
+    'odbc_source' => 'my-source',   // references $wgODBCSources entry — gains caching
+];
+```
 
 ---
 
 ## Open Documentation Issues
 
-No open documentation issues.
+None.
 
 ---
 
-## Resolved Issues
+## Resolved Issues (Summary by Version)
 
-18 issues were resolved across v1.0.1, v1.0.2, and v1.0.3, and a further 10 were fixed in v1.1.0 (KI-018, KI-023, KI-024, KI-025, KI-026, KI-027, KI-028, KI-029, KI-031, KI-040) — see the sections above for code-bug details.
+| Version | Issues resolved |
+|---------|----------------|
+| v1.0.1 | SQL identifier validation; CSRF improvements; credential sanitization in error messages |
+| v1.0.2 | XSS in `#display_odbc_table`; wikitext injection in `escapeTemplateParam` |
+| v1.0.3 | Magic words case-insensitive; `TOP N` for SQL Server via External Data; `$wgODBCMaxRows` enforced in ED connector; connection liveness probe; cache key collision fix; blocklist expansion |
+| v1.1.0 | KI-018 (per-page query limit `$wgODBCMaxQueriesPerPage`); KI-023 (MS Access ping uses `MSysObjects`); KI-024 (UNION word-boundary false positive); KI-025 (connection string special-char escaping); KI-026 (`validateConfig()` dead code); KI-027 (ED driver inheritance); KI-028 (ED integration falsy disable); KI-032 (sanitizer word boundaries); KI-033 (timeout failures logged); KI-040 (Progress `host` key in `validateConfig`) |
+| v1.2.0 | KI-019 (`row=` parameter for `#odbc_value` — non-first-row access); KI-050 (too-many-queries error message); KI-053 (`$wgODBCMaxConnections` described as per-worker-process) |
+| v1.3.0 | Admin test-query now respects `$wgODBCAllowArbitraryQueries` (KI-054); silent `data=` truncation now logged (KI-055); deprecated `cols` attribute removed from admin textarea (KI-056) |
+| v1.4.0 | `EDConnectorOdbcGeneric` fatal-error guard when External Data absent (KI-059); log prefix format standardised (KI-061) |
+| v1.5.0 | `executeComposed()` rejects `HAVING` without `GROUP BY` (KI-064); `validateIdentifier()` regex tightened (KI-065); `withOdbcWarnings()` filters ODBC-only warnings (KI-066); ED alias validation (KI-067); `null_value=` parameter (KI-068); encoding detection O(1) per query (KI-069); slow-query timer now measures full execute+fetch time (KI-073); ED standalone timeout enforcement (KI-074); `requiresTopSyntax()` emits `wfDeprecated()` (KI-075) |
+
+For full details on every issue — including root-cause analysis and fix descriptions — see [KNOWN_ISSUES.md](https://github.com/slickdexic/ODBC/blob/main/KNOWN_ISSUES.md).
 
 ---
 
-*Last updated: v1.1.0, 2026-03-03 — KI-018, KI-023, KI-024, KI-025, KI-026, KI-027, KI-028, KI-029, KI-031, KI-040 marked fixed; documentation issues KI-030 through KI-046 resolved*
+*Last updated: v1.5.0, 2026-03-03*
+
+---
+
+
+

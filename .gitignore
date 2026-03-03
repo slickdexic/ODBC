@@ -1,6 +1,9 @@
 # Composer dependencies
 /vendor/
-composer.lock
+# Note: composer.lock is intentionally NOT ignored. Committing the lockfile
+# ensures fully reproducible CI builds (see KI-092 / P2-093 in CHANGELOG.md).
+# Action required before first release: run `composer install` locally on
+# PHP 8.1+ and commit the generated composer.lock.
 
 # IDE / editor files
 .vscode/

@@ -30,7 +30,7 @@ ODBC/
 
 **File:** `includes/ODBCHooks.php`
 
-The entry point for the extension. Called by MediaWiki at load time via the `callback` key in `extension.json`.
+The entry point for the extension. Called by MediaWiki at load time via the `ExtensionRegistration` hook in `extension.json`.
 
 - **`onRegistration()`** — Called when the extension registers. Conditionally registers the External Data `odbc_generic` connector if the ED extension is present and integration is enabled.
 - **`onParserFirstCallInit()`** — Registers all five parser functions with the Parser object.
@@ -193,10 +193,6 @@ The current architecture has several known design limitations that are being add
 | No PHP namespaces | Legacy `AutoloadClasses` instead of PSR-4 `AutoloadNamespaces` | Part of P3-001 |
 | No interfaces | Cannot mock or substitute implementations in tests | P3-002 |
 | No unit tests | No regression protection | P3-003 |
-| ~~`validateConfig()` is dead code~~ | Fixed in v1.1.0: `validateConfig()` now called from `connect()` | — |
-| ~~FIFO connection eviction~~ | ~~Oldest entries evicted even if recently active~~ | ✅ Fixed in v1.1.0 (P2-024): LRU eviction now live |
-| ~~Connection ping fails on MS Access~~ | Fixed in v1.1.0: driver-aware probe using `MSysObjects` | — |
-| ~~ED connector `odbc_source` ignores driver~~ | Fixed in v1.1.0: driver inherited from `$wgODBCSources` | — |
 
 See [improvement_plan.md](https://github.com/slickdexic/ODBC/blob/main/improvement_plan.md) for the full plan.
 
@@ -209,7 +205,7 @@ LocalSettings.php calls wfLoadExtension('ODBC')
     ↓
 extension.json is read by MediaWiki
     ↓
-ODBCHooks::onRegistration() is called (extension 'callback')
+ODBCHooks::onRegistration() is called (ExtensionRegistration hook)
     - Checks $wgODBCExternalDataIntegration
     - If true and ED is loaded, registers EDConnectorOdbcGeneric
     ↓

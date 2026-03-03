@@ -1,8 +1,16 @@
 # Improvement Plan: MediaWiki ODBC Extension
 
-**Version targeting:** 1.0.3 (hotfixes — ALL COMPLETE), 1.1.0 (features/architecture), 1.2.0 (quality/DRY/features — ALL COMPLETE), 2.0.0 (breaking refactor)  
-**Last updated:** 2026-03-06 (v1.2.0 pass — P2-047/048/049/050/051 complete; KI-008 partially addressed; KI-019 fixed)  
+**Version targeting:** 1.0.3 (hotfixes — ALL COMPLETE), 1.1.0 (features/architecture — ALL COMPLETE), 1.2.0 (quality/DRY/features — ALL COMPLETE), 1.3.0 (ALL COMPLETE), 1.4.0 (ALL COMPLETE), 1.5.0 (ALL COMPLETE — unreleased; P2-093 partially complete — composer.lock deferred), 2.0.0 (breaking refactor)  
+**Last updated:** 2026-03-03 (v1.5.0 post-review implementation pass — KI-086 through KI-093 all resolved; P2-087 through P2-094 complete or partially complete)  
 **Based on:** codebase_review.md and KNOWN_ISSUES.md findings
+
+> **Review Note (2026-03-09, v1.5.x post-release review):** A ninth comprehensive review pass was conducted against all PHP source files, configuration files (`composer.json`, `extension.json`, `.github/workflows/ci.yml`), and all wiki documentation pages in the post-release state of v1.5.0. All 86 prior P1/P2 items remain complete. Eight new issues were identified: KI-086 (`wiki/Installation.md` Step 4 verification cites stale version "1.0.3"); KI-087 (`wiki/Troubleshooting.md` UNION section presents KI-024 as active when it was fixed in v1.1.0; secondary: "v1.0.3 and earlier" MAX_CONNECTIONS reference should be "v1.0.2 and earlier"); KI-088 (`sanitize()` blocklist missing `CAST(` and `CONVERT(` obfuscation vectors — previously noted in §2.1 but never assigned a KI or plan item); KI-089 (`withOdbcWarnings()` ODBC-origin filter missing `[Progress]`, `[OpenEdge]`, `[Oracle]`, `[DataDirect]`, `[Easysoft]` vendor signatures); KI-090 (`displayOdbcTable()` registered with flag `0` / variadic `...$params`, inconsistent with `SFH_OBJECT_ARGS` pattern used by `odbcQuery()` and `forOdbcTable()`); KI-091 (`composer.json` references EOL `composer/installers ^1.0` and EOL `phpunit/phpunit ^9.0`); KI-092 (CI Composer cache key hashes `composer.json` instead of `composer.lock`; no `composer.lock` in repository); KI-093 (`SECURITY.md` v1.0.2 history header uses "(March 2026)" instead of YYYY-MM-DD format). New plan items P2-087 through P2-094 added.
+
+> **Review Note (2026-03-03, v1.5.0 review pass):** An eighth review pass was conducted against all source files, documentation, and wiki pages for the shipped v1.5.0 code. All nine P2-063–P2-071 items are confirmed complete. Fifteen new issues were identified: KI-071 (`wiki/Architecture.md` `ODBCHooks` description still references deprecated `callback` key); KI-072 (`extension.json` `ODBCSources` description cites non-existent `options` key); KI-073 (slow-query timer `$queryStart` placed after `odbc_execute()` — measures fetch time only); KI-074 (ED connector standalone mode uses `odbc_exec()` directly, bypassing per-statement timeout); KI-075 (`requiresTopSyntax()` has no `wfDeprecated()` call); KI-076 (`UPGRADE.md` has no v1.5.0 section); KI-077 (`SECURITY.md` v1.5.0 entry shows "(Unreleased)"); KI-078 (`wiki/Architecture.md` Design Limitations table has stale resolved-item strikethrough rows); KI-079 (`wiki/Known-Issues.md` stale at v1.1.0 — KI-019 shown open when fixed in v1.2.0); KI-080 (`wiki/Security.md` release history only through v1.1.0, double-pipe formatting bug); KI-081 (`wiki/Parser-Functions.md` missing `null_value=` parameter); KI-082 (`wiki/Configuration.md` missing `charset=` key); KI-083 (`wiki/Configuration.md` missing `host`/`db` keys for Progress OpenEdge); KI-084 (`wiki/Parser-Functions.md` uses `{{#` as inline comment — invalid wiki syntax); KI-085 (`wiki/Security.md` Known Limitations table incomplete and contains a resolved item). New plan items P2-072 through P2-086 added.
+
+> **Review Note (2026-03-08, v1.5.0 implementation):** All nine items (P2-063 through P2-071) identified in the v1.4.0 review pass have been fully implemented. KI-063 CHANGELOG dating fixed; KI-064 HAVING/GROUP BY guard added to `executeComposed()`; KI-065 `validateIdentifier()` regex tightened and promoted to `public static`; KI-066 `withOdbcWarnings()` restricted to ODBC-originating warnings; KI-067 alias validation added to `EDConnectorOdbcGeneric::from()`; KI-068 `null_value=` parser parameter and `mergeResults()` NULL-aware handling; KI-069 per-result-set encoding detection with `charset=` per-source key; KI-070 per-process documentation in README, SECURITY.md, extension.json; P2-071 `strtr()` map optimisation in `forOdbcTable()`. All 70 tracked issues are now resolved or documented; 2 remain open by design (KI-008 SELECT *, KI-020 ED caching partial). Extension version bumped to 1.5.0 in extension.json.
+
+> **Review Note (2026-03-08, v1.4.0 pass):** A seventh review pass was conducted against the shipped v1.4.0 source code. All P2-054 through P2-062 items (v1.3.0 and v1.4.0) are confirmed complete. Eight new issues were identified: KI-063 (`CHANGELOG.md` v1.4.0 `[Unreleased]` recurrence — fourth consecutive), KI-064 (`executeComposed()` HAVING without GROUP BY generates invalid SQL on strict databases), KI-065 (`validateIdentifier()` accepts trailing dots and unlimited dot-depth), KI-066 (`withOdbcWarnings()` captures all PHP `E_WARNING` not just ODBC), KI-067 (`EDConnectorOdbcGeneric::from()` alias values not validated), KI-068 (NULL values silently coerced to empty string), KI-069 (`mb_detect_encoding()` called O(rows × columns)), KI-070 (`$wgODBCMaxConnections` per-process nature undocumented). New plan items P2-063 through P2-071 added. Additionally, `codebase_review.md` and `improvement_plan.md` headers were stale (KI-064 — now corrected); both documents now accurately reflect the v1.4.0 review state.
 
 > **Review Note (2026-03-05, v1.1.0 final pass):** A fifth review pass verified all documentation files against the shipped code. Confirmed fixes for KI-035/036/037 (Architecture.md errors, wiki KI-008 description, README magic word version), KI-040 (validateConfig Progress host key), KI-041–048 (documentation/presentation errors), and P2-027 (README MAX_CONNECTIONS). Four new documentation/code issues were found: KI-050 — `odbc-error-too-many-queries` message incorrectly recommends `{{#odbc_clear:}}` which has no effect on the query counter; KI-051 — `wiki/Architecture.md` contains four stale references after P2-024 (LRU eviction) was implemented; KI-052 — `wiki/Known-Issues.md` KI-020 not updated for partial v1.1.0 fix; KI-053 — `$wgODBCMaxConnections` described as "per source" in six locations when it is a global pool limit. One code quality finding: `withOdbcWarnings()` is `private static`, so five raw `set_error_handler` closures in ODBCQueryRunner and EDConnectorOdbcGeneric remain unrefactored (P2-051). New plan items P2-047 through P2-051 added.
 
@@ -1098,7 +1106,594 @@ Two error-path log entries used a bracket prefix inconsistent with all other mes
 
 Previously there was no defined way to run tests or check coding standards. This lays the groundwork for contributors to add PHPUnit tests.
 
+---
+
+## Phase 2: v1.4.x — New Findings (2026-03-08 Review Pass)
+
+The following new items were identified during the v1.4.0 review pass. Items KI-063/065/066/067/069/070 are low-effort patch-level fixes suitable for v1.4.1 or v1.5.0. Items KI-064/068 are functional changes better scoped to a planned feature release.
+
+---
+
+### P2-063 — Date `CHANGELOG.md` v1.4.0 Entry and Add Release CI Check (KI-063) ✦ NEW (2026-03-08)
+
+**Priority:** DOCUMENTATION  
+**Effort:** Trivial  
+**File:** `CHANGELOG.md`, `.github/workflows/` (new)  
+**Status:** ✅ Done (v1.5.0)
+
+Replace `## [Unreleased] — v1.4.0` with the actual release date. To prevent the pattern from recurring for the fifth consecutive release, add a CI step:
+
+```yaml
+- name: Check CHANGELOG has no [Unreleased] entry on release
+  if: startsWith(github.ref, 'refs/tags/')
+  run: grep -q "\[Unreleased\]" CHANGELOG.md && echo "CHANGELOG has [Unreleased] — update it before tagging" && exit 1 || true
+```
+
+---
+
+### P2-064 — Validate `having=` Requires `group by=` in `executeComposed()` (KI-064) ✦ NEW (2026-03-08)
+
+**Priority:** MEDIUM  
+**Effort:** Trivial  
+**File:** `includes/ODBCQueryRunner.php`, `executeComposed()`  
+**Status:** ✅ Done (v1.5.0)
+
+Add a pre-execution guard:
+
+```php
+if ( !empty( $having ) && empty( $groupBy ) ) {
+    throw new MWException( wfMessage( 'odbc-error-having-without-groupby' )->text() );
+}
+```
+
+Add corresponding `odbc-error-having-without-groupby` key to `i18n/en.json` and `qqq.json`. This prevents a class of confusing DBMS errors on PostgreSQL and SQL Server with no extension-level explanation.
+
+---
+
+### P2-065 — Tighten `validateIdentifier()` Regex to Reject Invalid Dot Patterns (KI-065) ✦ NEW (2026-03-08)
+
+**Priority:** LOW  
+**Effort:** Trivial (1 line)  
+**File:** `includes/ODBCQueryRunner.php`, `validateIdentifier()`  
+**Status:** ✅ Done (v1.5.0)
+
+Replace the current regex:
+```php
+// BEFORE — allows trailing dots, double dots, arbitrary depth:
+'/^[a-zA-Z_][a-zA-Z0-9_\.]*$/'
+
+// AFTER — allows 1–3 properly-formed dot-separated segments:
+'/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*){0,2}$/'
+```
+
+This allows `table`, `schema.table`, and `catalog.schema.table`, and rejects `table.`, `table..column`, and `a.b.c.d.e`.
+
+---
+
+### P2-066 — Scope `withOdbcWarnings()` Error Handler to ODBC-Originated Warnings (KI-066) ✦ NEW (2026-03-08)
+
+**Priority:** LOW  
+**Effort:** Small  
+**File:** `includes/ODBCConnectionManager.php`, `withOdbcWarnings()`  
+**Status:** ✅ Done (v1.5.0)
+
+The current handler converts **all** PHP `E_WARNING` to `MWException`. Add an origin filter to let non-ODBC warnings propagate normally:
+
+```php
+set_error_handler(static function (int $errno, string $errstr): bool {
+    // Only intercept ODBC driver warnings; pass non-ODBC warnings to the next handler.
+    if (stripos($errstr, 'odbc') === false && stripos($errstr, '[unixODBC]') === false
+            && stripos($errstr, '[Microsoft]') === false && stripos($errstr, '[IBM]') === false) {
+        return false;
+    }
+    throw new MWException($errstr);
+}, E_WARNING);
+```
+
+---
+
+### P2-067 — Validate Alias Keys in `EDConnectorOdbcGeneric::from()` (KI-067) ✦ NEW (2026-03-08)
+
+**Priority:** LOW  
+**Effort:** Trivial  
+**File:** `includes/connectors/EDConnectorOdbcGeneric.php`, `from()`  
+**Status:** ✅ Done (v1.5.0)
+
+Add identifier validation for alias array keys, consistent with `executeComposed()`:
+
+```php
+protected function from(): string {
+    $parts = [];
+    foreach ( $this->tables as $alias => $table ) {
+        if ( is_numeric( $alias ) ) {
+            $parts[] = $table;
+        } else {
+            ODBCQueryRunner::validateIdentifier( $alias ); // ← add this
+            $parts[] = "$table AS $alias";
+        }
+    }
+    return implode( ', ', $parts );
+}
+```
+
+---
+
+### P2-068 — Add `null_value=` Parameter to `{{#odbc_query:}}` (KI-068) ✦ NEW (2026-03-08)
+
+**Priority:** MEDIUM  
+**Effort:** Moderate  
+**Files:** `includes/ODBCParserFunctions.php`, `includes/ODBCQueryRunner.php`, `README.md`, `i18n/en.json`  
+**Status:** ✅ Done (v1.5.0)
+
+Database NULL values are currently coerced to empty string `''` with no way to distinguish NULL from actual empty values. Add a `null_value=` parameter:
+
+```wiki
+{{#odbc_query: source=mydb
+ | from=Orders
+ | data=status=Status,notes=Notes
+ | null_value=N/A
+}}
+```
+
+In `mergeResults()`, pass the configured `null_value` string and use it in place of `(string)null`:
+
+```php
+$value = $rawValue ?? $nullValue; // $nullValue defaults to ''
+$storedData[ strtolower( $localVar ) ][] = (string)$value;
+```
+
+Default `null_value=` is `''` to preserve full backward compatibility.
+
+---
+
+### P2-069 — Optimise UTF-8 Encoding Detection: Sample Once Per Result Set (KI-069) ✦ NEW (2026-03-08)
+
+**Priority:** LOW  
+**Effort:** Moderate  
+**File:** `includes/ODBCQueryRunner.php`, `executeRawQuery()`  
+**Status:** ✅ Done (v1.5.0)
+
+Replace O(rows × columns) `mb_detect_encoding()` calls with a single detection on the first row:
+
+```php
+// Detect encoding from first row only — assume consistent across result set.
+$detectedEncoding = null;
+while ( $row = odbc_fetch_array( $stmt ) ) {
+    if ( $detectedEncoding === null ) {
+        foreach ( $row as $value ) {
+            if ( $value !== null && $value !== '' ) {
+                $detectedEncoding = mb_detect_encoding( $value, ['UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252', 'ASCII'], true );
+                break;
+            }
+        }
+        $detectedEncoding = $detectedEncoding ?? 'UTF-8';
+    }
+    // ... convert $row using $detectedEncoding
+}
+```
+
+Also add a per-source `charset=` config option so operators can specify encoding explicitly, bypassing runtime detection entirely.
+
+---
+
+### P2-070 — Document `$wgODBCMaxConnections` as Per-PHP-Process (KI-070) ✦ NEW (2026-03-08)
+
+**Priority:** DOCUMENTATION  
+**Effort:** Trivial  
+**Files:** `extension.json`, `README.md`, `SECURITY.md`  
+**Status:** ✅ Done (v1.5.0)
+
+Update three locations to add a "per-process" qualifier:
+
+- `extension.json`: `"Maximum number of ODBC connections to cache per PHP-worker-process. In PHP-FPM deployments, total system connections = this value × number of worker processes."`
+- `README.md` Performance/troubleshooting section: add a note after the pool description.
+- `SECURITY.md` Known Limitations: add a paragraph about PHP-FPM connection scaling.
+
+---
+
+### P2-071 — Replace `str_replace()` Loop in `forOdbcTable` with `strtr()` (§5.9) ✦ NEW (2026-03-08)
+
+**Priority:** LOW  
+**Effort:** Small  
+**File:** `includes/ODBCParserFunctions.php`, `forOdbcTable()`  
+**Status:** ✅ Done (v1.5.0)
+
+Replace the O(rows × variables) `str_replace()` loop with a single `strtr()` call per row:
+
+```php
+// BEFORE — str_replace called N times per row:
+foreach ( $rows as $row ) {
+    $rowWikitext = $templateText;
+    foreach ( $row as $varName => $value ) {
+        $rowWikitext = str_replace( '{{{' . $varName . '}}}', $value, $rowWikitext );
+    }
+    $output .= $rowWikitext;
+}
+
+// AFTER — strtr does one pass per row regardless of variable count:
+foreach ( $rows as $row ) {
+    $map = [];
+    foreach ( $row as $varName => $value ) {
+        $map['{{{' . $varName . '}}}'] = $value;
+    }
+    $output .= strtr( $templateText, $map );
+}
+```
+
+---
+
+### P2-072 — Fix `wiki/Architecture.md` Stale `ODBCHooks` `callback` Reference (KI-071) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** LOW  
+**Effort:** Trivial  
+**File:** `wiki/Architecture.md`, `ODBCHooks` component description  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Update the `ODBCHooks` component description to reference the `ExtensionRegistration` hook rather than the deprecated `callback` key. One sentence change.
+
+---
+
+### P2-073 — Remove Non-Existent `options` Key from `extension.json` Config Description (KI-072) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** LOW  
+**Effort:** Trivial  
+**File:** `extension.json`, `ODBCSources` config description  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Remove `options (optional)` from the `ODBCSources` description string. No code changes; description-string edit only.
+
+---
+
+### P2-074 — Fix Slow-Query Timer Placement in `executeRawQuery()` (KI-073) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** MEDIUM  
+**Effort:** Trivial  
+**File:** `includes/ODBCQueryRunner.php`, `executeRawQuery()`  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Move `$queryStart = microtime( true )` to immediately before `$success = odbc_execute( $stmt, $params )`. This is a one-line change that makes `$elapsed` (and thus the `$wgODBCSlowQueryThreshold` comparison) measure total query+fetch time rather than only fetch time. Zero functional regression risk.
+
+---
+
+### P2-075 — Add `odbc_prepare`/`odbc_setoption`/`odbc_execute` to ED Standalone Fetch Path (KI-074) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** MEDIUM  
+**Effort:** Small  
+**File:** `includes/connectors/EDConnectorOdbcGeneric.php`, `fetch()` (standalone path)  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Replace `odbc_exec( $this->odbcConnection, $query )` with the full `odbc_prepare()` + `odbc_setoption()` + `odbc_execute()` pattern, mirroring `ODBCQueryRunner::executeRawQuery()`. This ensures `$wgODBCQueryTimeout` and per-source `timeout=` are applied consistently regardless of which connector path executes the query.
+
+---
+
+### P2-076 — Add `wfDeprecated()` Call to `requiresTopSyntax()` (KI-075) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** LOW  
+**Effort:** Trivial  
+**File:** `includes/ODBCQueryRunner.php`, `requiresTopSyntax()`  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Add `wfDeprecated( __METHOD__, '1.1.0', 'ODBC' );` as the first statement of `requiresTopSyntax()`. This emits a runtime deprecation notice to the `deprecated` log channel on each call, signalling to any third-party callers that they must migrate to `getRowLimitStyle()`. The method body and delegation to `getRowLimitStyle()` are unchanged.
+
+---
+
+### P2-077 — Add v1.5.0 Upgrade Section to `UPGRADE.md` (KI-076) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** MEDIUM  
+**Effort:** Small  
+**File:** `UPGRADE.md`  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Add a "Upgrading to 1.5.0 from 1.4.0" section documenting all operator-visible changes introduced in v1.5.0:
+
+- New `null_value=` parameter on `{{#odbc_query:}}` (default `''`, fully backward-compatible)
+- New per-source `charset=` key in `$wgODBCSources` to bypass encoding auto-detection
+- `$wgODBCMaxConnections` is a per-PHP-process limit (clarified in v1.5.0 docs)
+- `having=` without `group by=` now returns an extension error (was silent invalid SQL)
+- `validateIdentifier()` now rejects trailing dots and >3 dot-segment depth (may affect edge-case identifiers)
+- `withOdbcWarnings()` now scopes to ODBC-origin warnings only; non-ODBC PHP warnings propagate normally
+
+---
+
+### P2-078 — Update `SECURITY.md` v1.5.0 Release History Date on Release (KI-077) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** LOW  
+**Effort:** Trivial  
+**File:** `SECURITY.md`, "Security Release History" section  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Replace `### Version 1.5.0 (Unreleased)` with the actual release date when v1.5.0 is tagged. Ensure this is part of the release checklist alongside the CHANGELOG.md `[Unreleased]` → date substitution that was added for KI-063/P2-063. Verify the CI `grep "Unreleased" CHANGELOG.md` check also covers SECURITY.md.
+
+---
+
+### P2-079 — Clean Up Resolved Strikethrough Rows from `wiki/Architecture.md` Design Limitations Table (KI-078) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** LOW  
+**Effort:** Trivial  
+**File:** `wiki/Architecture.md`, Design Limitations table  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Remove the three resolved rows (FIFO eviction, MS Access ping failure, `validateConfig()` dead code) that are displayed with strikethrough formatting. The table should reflect current limitations only. Historical tracking belongs in KNOWN_ISSUES.md, not in the limitations table.
+
+---
+
+### P2-080 — Update `wiki/Known-Issues.md` to Current State (v1.5.0) (KI-079) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** HIGH  
+**Effort:** Moderate  
+**File:** `wiki/Known-Issues.md`  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+The file is stale at v1.1.0. Full update required:
+
+- Mark KI-019 as ✅ Fixed in v1.2.0 (row= parameter addition)
+- Move all issues fixed in v1.2.0 through v1.5.0 into Resolved section
+- Update the Open Issues section to show only KI-008 and KI-020 (partial) as open
+- Add brief summaries of v1.2.0–v1.5.0 fixes in the Resolved section
+- Update the footer to `Last updated: v1.5.0`
+
+---
+
+### P2-081 — Complete `wiki/Security.md` Security Release History Table (KI-080) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** MEDIUM  
+**Effort:** Small  
+**File:** `wiki/Security.md`, "Security Release History" table  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+(1) Fix the double-pipe formatting bug on the last existing row — split the v1.1.0 content onto its own separate table row.
+
+(2) Add missing entries for v1.2.0, v1.3.0, v1.4.0, and v1.5.0:
+
+| Version | Security changes |
+|---------|-----------------|
+| v1.2.0 | `odbcQuery()` error returns now use `'noparse' => true, 'isHTML' => true` (P2-052) |
+| v1.3.0 | `runTestQuery()` in `Special:ODBCAdmin` now enforces `$wgODBCAllowArbitraryQueries` (P2-056) |
+| v1.4.0 | ED connector `from()` now validates table aliases via `validateIdentifier()` (P2-067) |
+| v1.5.0 | `withOdbcWarnings()` scoped to ODBC-origin warnings only (P2-066); `validateIdentifier()` regex tightened to reject trailing dots and >3 segments (P2-065) |
+
+---
+
+### P2-082 — Document `null_value=` Parameter in `wiki/Parser-Functions.md` (KI-081) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** MEDIUM  
+**Effort:** Trivial  
+**File:** `wiki/Parser-Functions.md`, `{{#odbc_query:}}` parameters table  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Add the `null_value=` row to the parameters table, clearly documenting the default (`''`, backward-compatible) and illustrating use with a concrete example (`null_value=N/A`). Add a brief callout explaining the distinction between database NULL and empty string in the context of `{{#if:}}` template logic.
+
+---
+
+### P2-083 — Document `charset=` Per-Source Key in `wiki/Configuration.md` (KI-082) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** MEDIUM  
+**Effort:** Trivial  
+**File:** `wiki/Configuration.md`, Connection Options Reference table  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Add the `charset=` row to the Connection Options Reference table with a description, example (`charset=Windows-1252`), and a note that this bypasses `mb_detect_encoding()` for all rows from the source, improving performance for sources with large result sets.
+
+---
+
+### P2-084 — Add `host` and `db` Keys to `wiki/Configuration.md` Connection Options Table (KI-083) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** MEDIUM  
+**Effort:** Trivial  
+**File:** `wiki/Configuration.md`, Connection Options Reference table  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Add `host` (Mode 2 OpenEdge alternative to `server`) and `db` (Mode 2 OpenEdge alternative to `database`) rows to the table with descriptions that cross-reference the Progress OpenEdge section of `wiki/Supported-Databases.md`. This closes the documentation gap that could cause operators to use `server=` for an OpenEdge source, resulting in a confusing validation error.
+
+---
+
+### P2-085 — Fix `{{#` Comment Syntax in `wiki/Parser-Functions.md` Example (KI-084) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** LOW  
+**Effort:** Trivial  
+**File:** `wiki/Parser-Functions.md`, `{{#odbc_value:}}` examples section  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+Replace `{{# Access a specific row of a multi-row result: }}` with `<!-- Access a specific row of a multi-row result: -->`. This prevents any wiki editor from copying the code block verbatim and getting a parser error.
+
+---
+
+### P2-086 — Update `wiki/Security.md` Known Limitations Table (KI-085) ✅ Done — v1.5.0 (2026-03-03)
+
+**Priority:** LOW  
+**Effort:** Trivial  
+**File:** `wiki/Security.md`, "Known Security Limitations" table  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+(1) Remove the resolved KI-033 row (it is marked "Fixed in v1.1.0" and belongs in release history, not limitations).
+
+(2) Add new rows reflecting currently-open security limitations:
+- `withOdbcWarnings() captures all PHP E_WARNING` — can produce misleading exception messages on PHP 8.x; mitigation: upgrade to v1.5.0+ (partial fix)
+- `No per-user or per-IP rate limiting for odbc-query` — trusted users can trigger many DB queries simultaneously; mitigation: restrict `odbc-query` to a small trusted group
+
+---
+
  (not necessarily at the wiki-user level) and require careful planning. They align the extension with MediaWiki 1.42+ and PHP 8.x best practices.
+
+---
+
+## Phase 2: v1.5.x — Post-Release Findings
+
+> Items in this section were identified during a post-release review of the v1.5.0 codebase on 2026-03-09. None are yet fixed. All are P2 items (non-breaking improvements to quality, security, tooling, and documentation).
+
+---
+
+### P2-087 — Update `wiki/Installation.md` Version Reference in Step 4 (KI-086)
+
+**Priority:** DOCS  
+**Effort:** Trivial  
+**File:** `wiki/Installation.md`, verification step 4  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+The Special:Version verification step tells the operator to expect "version 1.0.3". Current version is 1.5.0. If left uncorrected this will continue to be stale with every future release.
+
+**Fix (preferred):** Replace the hard-coded version string with a generic instruction:
+
+> "The ODBC extension should appear in the 'Parser hooks' section. The version shown should match the version recorded in `extension.json` in your installation directory."
+
+This is more durable than a version-locked string and eliminates the need to update this step on every release.
+
+---
+
+### P2-088 — Fix `wiki/Troubleshooting.md` UNION Section and MAX_CONNECTIONS Reference (KI-087)
+
+**Priority:** DOCS  
+**Effort:** Small  
+**File:** `wiki/Troubleshooting.md`, "Illegal SQL pattern 'UNION'" section and Admin Issues section  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+**Issue A:** The UNION troubleshooting section presents KI-024 as a current open bug ("rename the column") when it was fixed in v1.1.0. Editors are misled into unnecessary schema changes.
+
+**Fix A:** Replace the section body with a resolved-note and updated guidance:
+```
+~~KI-024 — Fixed in v1.1.0.~~ `UNION` is now matched with word-boundary regex `/\bUNION\b/i`.
+Identifiers such as `TRADE_UNION_ID` are no longer blocked. If you are seeing this error on
+v1.1.0+, your query contains a literal UNION keyword, which is blocked by design.
+```
+
+**Issue B:** The Admin Issues section states "In the README (v1.0.3 and earlier) there was a reference to a `MAX_CONNECTIONS` constant." — v1.0.3 was the version that *replaced* `MAX_CONNECTIONS` with `$wgODBCMaxConnections`. The correct statement is "v1.0.2 and earlier".
+
+**Fix B:** Change "v1.0.3 and earlier" to "v1.0.2 and earlier".
+
+---
+
+### P2-089 — Add `CAST(` and `CONVERT(` to `sanitize()` Blocklist (KI-088)
+
+**Priority:** MEDIUM (security, defence-in-depth)  
+**Effort:** Trivial  
+**File:** `includes/ODBCQueryRunner.php`, `sanitize()`  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+`sanitize()` blocks `CHAR(` and `CONCAT(` but not `CAST(` or `CONVERT(`. These are standard obfuscation vectors used to encode blocked keywords as hex literals (e.g. `CAST(0x44524F50 AS CHAR)` → `DROP`). The gap was noted in `codebase_review.md` §2.1 but was never assigned a tracking number or plan item.
+
+**Fix:**
+```php
+$charPatterns = [
+    ';', '--', '#', '/*', '*/', '<?',
+    'CHAR(', 'CONCAT(', 'CAST(', 'CONVERT(',
+];
+```
+
+**Caution:** `CONVERT()` is also used in legitimate read-only SQL (e.g., `CONVERT(price, UNSIGNED INTEGER)`). Document the change in CHANGELOG.md and UPGRADE.md with the known false-positive risk. Operators requiring `CONVERT()` in queries should use the `query=` prepared-statement path.
+
+---
+
+### P2-090 — Extend `withOdbcWarnings()` Filter to Cover Additional ODBC Driver Vendors (KI-089)
+
+**Priority:** LOW  
+**Effort:** Trivial  
+**File:** `includes/ODBCConnectionManager.php`, `withOdbcWarnings()`  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+The P2-066 ODBC-origin filter currently recognises `odbc`, `[unixODBC]`, `[Microsoft]`, `[IBM]`. Driver vendors Progress/OpenEdge and Oracle can produce warning messages that do not contain any of these strings.
+
+**Fix:** Extend the filter array to include additional vendor signatures:
+```php
+$vendorPrefixes = [
+    'odbc', '[unixODBC]', '[Microsoft]', '[IBM]',
+    '[Progress]', '[OpenEdge]', '[Oracle]', '[DataDirect]', '[Easysoft]',
+];
+foreach ($vendorPrefixes as $prefix) {
+    if (stripos($errstr, $prefix) !== false) {
+        // recognised as an ODBC-origin warning — proceed with MWException
+        break;
+    }
+}
+```
+
+---
+
+### P2-091 — Document or Resolve `displayOdbcTable()` `SFH_OBJECT_ARGS` Inconsistency (KI-090)
+
+**Priority:** LOW (design / future-proofing)  
+**Effort:** Trivial (comment) or Small (full fix)  
+**Files:** `includes/ODBCParserFunctions.php`, `includes/ODBCHooks.php`  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+`displayOdbcTable()` is registered with flag `0` (pre-expanded string arguments via `...$params`), while `odbcQuery()` and `forOdbcTable()` use `SFH_OBJECT_ARGS` (unexpanded `PPNode` arguments). The inconsistency is undocumented and will confuse contributors.
+
+**Fix (minimal):** Add a comment in `onParserFirstCallInit()` explaining why `displayOdbcTable` intentionally omits `SFH_OBJECT_ARGS`:
+```php
+// displayOdbcTable only requires a template name and variable prefix; pre-expanded
+// string arguments (flag 0) are sufficient for its current functionality. Promote
+// to SFH_OBJECT_ARGS in v2.0 if complex argument handling is needed.
+```
+
+**Fix (full, v2.0):** Promote `displayOdbcTable()` to `SFH_OBJECT_ARGS` for full consistency. Update the function signature accordingly.
+
+---
+
+### P2-092 — Remove EOL Package Versions from `composer.json` (KI-091)
+
+**Priority:** LOW (developer tooling hygiene)  
+**Effort:** Trivial  
+**File:** `composer.json`  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+**Issue 1:** `"composer/installers": "^1.0 || ^2.0"` — v1.x is EOL; the `^2.0` constraint alone is correct.
+
+**Issue 2:** `"phpunit/phpunit": "^9.0 || ^10.0"` — PHPUnit 9.x reached EOL February 2024. For PHP 8.1+, the correct constraint is `^10.0 || ^11.0`.
+
+**Fix:**
+```json
+"require": {
+    "composer/installers": "^2.0"
+},
+"require-dev": {
+    "phpunit/phpunit": "^10.0 || ^11.0"
+}
+```
+
+Run `composer update` after the change and commit the updated `composer.lock` (see P2-093).
+
+---
+
+### P2-093 — Add `composer.lock` to Repository; Fix CI Cache Key (KI-092)
+
+**Priority:** LOW (CI reproducibility)  
+**Effort:** Small  
+**Files:** `.github/workflows/ci.yml`; new file `composer.lock`  
+**Status:** ✅ Partially Done — v1.5.0 (2026-03-03) — cache key updated; `composer.lock` must be committed manually before release
+
+Without a `composer.lock`, dependency resolution is non-deterministic. CI runs on different days can install different transitive-dependency versions despite identical code. The current cache key `hashFiles('composer.json')` does not reflect actual installed versions.
+
+**Fix (step 1):** Commit a `composer.lock`. Run `composer install` locally on PHP 8.1 (the minimum supported CI target) and commit the result.
+
+**Fix (step 2):** Update the CI cache key:
+```yaml
+key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+restore-keys: |
+  ${{ runner.os }}-composer-
+```
+
+Note: After implementing P2-092 (EOL package cleanup), run `composer update` before committing the lockfile to ensure the lockfile reflects the updated constraints.
+
+---
+
+### P2-094 — Fix `SECURITY.md` v1.0.2 Date Format (KI-093)
+
+**Priority:** DOCS  
+**Effort:** Trivial  
+**File:** `SECURITY.md`, Security Release History section  
+**Status:** ✅ Done — v1.5.0 (2026-03-03)
+
+The v1.0.2 section header reads `### Version 1.0.2 (March 2026)`. All other entries use `(YYYY-MM-DD)` format. This reduces audit-trail precision.
+
+**Fix:**
+```markdown
+### Version 1.0.2 (2026-03-02)
+```
+
+---
+
+## Phase 3: v2.0.0 — Architectural Refactoring
+
+> Items in this section represent significant architectural changes
 
 ---
 
@@ -1316,6 +1911,38 @@ The following documentation improvements should be addressed in the next release
 | P2-060 Document positional source arg in odbcQuery() (§5.3) | v1.4.0 | ✅ Done (v1.4.0) | LOW | Trivial | Documentation clarity |
 | P2-061 Standardise wfDebugLog prefix format (§5.4) | v1.4.0 | ✅ Done (v1.4.0) | LOW | Trivial | Code quality / log grep |
 | P2-062 Add require-dev + .phpcs.xml for developer tooling (§6.5) | v1.4.0 | ✅ Done (v1.4.0) | LOW | Small | Developer experience |
+| P2-063 Date CHANGELOG v1.4.0 + add CI release check (KI-063) | v1.5.0 | ✅ Done (v1.5.0) | DOCUMENTATION | Trivial | Prevents recurring [Unreleased] pattern |
+| P2-064 Validate having= requires group by= (KI-064) | v1.5.0 | ✅ Done (v1.5.0) | MEDIUM | Trivial | Prevents invalid SQL on strict DBs |
+| P2-065 Tighten validateIdentifier() regex (KI-065) | v1.5.0 | ✅ Done (v1.5.0) | LOW | Trivial | Input validation correctness |
+| P2-066 Scope withOdbcWarnings() to ODBC warnings (KI-066) | v1.5.0 | ✅ Done (v1.5.0) | LOW | Small | Prevents misleading exception messages |
+| P2-067 Validate ED connector aliases in from() (KI-067) | v1.5.0 | ✅ Done (v1.5.0) | LOW | Trivial | Defence-in-depth / invariant consistency |
+| P2-068 Add null_value= parameter for NULL representation (KI-068) | v1.5.0 | ✅ Done (v1.5.0) | MEDIUM | Moderate | Data accuracy / template expressiveness |
+| P2-069 Optimise mb_detect_encoding() to per-result-set (KI-069) | v1.5.0 | ✅ Done (v1.5.0) | LOW | Moderate | Performance for large result sets |
+| P2-070 Document $wgODBCMaxConnections as per-process (KI-070) | v1.5.0 | ✅ Done (v1.5.0) | DOCUMENTATION | Trivial | Operator awareness / capacity planning |
+| P2-071 Replace str_replace loop with strtr() in forOdbcTable (§5.9) | v1.5.0 | ✅ Done (v1.5.0) | LOW | Trivial | Performance / code quality |
+| P2-072 Fix wiki/Architecture.md stale ODBCHooks callback ref (KI-071) | v1.5.0-docs | ✅ Done | LOW | Trivial | Documentation accuracy |
+| P2-073 Remove non-existent options key from extension.json desc (KI-072) | v1.5.0-docs | ✅ Done | LOW | Trivial | Documentation accuracy |
+| P2-074 Fix slow-query timer placement in executeRawQuery (KI-073) | v1.5.x | ✅ Done | MEDIUM | Trivial | Observability correctness |
+| P2-075 Add prepare/setoption/execute to ED standalone fetch path (KI-074) | v1.5.x | ✅ Done | MEDIUM | Small | Feature parity / timeout enforcement |
+| P2-076 Add wfDeprecated() call to requiresTopSyntax() (KI-075) | v1.5.x | ✅ Done | LOW | Trivial | Code quality / deprecation signal |
+| P2-077 Add v1.5.0 upgrade section to UPGRADE.md (KI-076) | v1.5.0-docs | ✅ Done | MEDIUM | Small | Operator upgrade guidance |
+| P2-078 Update SECURITY.md v1.5.0 release date on release (KI-077) | On release | ✅ Done | LOW | Trivial | Documentation accuracy |
+| P2-079 Remove stale rows from wiki/Architecture.md Design Limitations (KI-078) | v1.5.0-docs | ✅ Done | LOW | Trivial | Documentation quality |
+| P2-080 Update wiki/Known-Issues.md to v1.5.0 current state (KI-079) | v1.5.0-docs | ✅ Done | HIGH | Moderate | Documentation accuracy |
+| P2-081 Complete wiki/Security.md release history table (KI-080) | v1.5.0-docs | ✅ Done | MEDIUM | Small | Documentation accuracy |
+| P2-082 Document null_value= in wiki/Parser-Functions.md (KI-081) | v1.5.0-docs | ✅ Done | MEDIUM | Trivial | Documentation completeness |
+| P2-083 Document charset= in wiki/Configuration.md (KI-082) | v1.5.0-docs | ✅ Done | MEDIUM | Trivial | Documentation completeness |
+| P2-084 Add host/db keys to wiki/Configuration.md table (KI-083) | v1.5.0-docs | ✅ Done | MEDIUM | Trivial | Documentation accuracy |
+| P2-085 Fix {{# comment syntax in wiki/Parser-Functions.md (KI-084) | v1.5.0-docs | ✅ Done | LOW | Trivial | Documentation quality |
+| P2-086 Update wiki/Security.md Known Limitations table (KI-085) | v1.5.0-docs | ✅ Done | LOW | Trivial | Documentation completeness |
+| P2-087 Fix Installation.md version ref (KI-086) | v1.5.0 | ✅ Done | DOCS | Trivial | Documentation accuracy |
+| P2-088 Fix Troubleshooting.md UNION section + MAX_CONNECTIONS ref (KI-087) | v1.5.0 | ✅ Done | DOCS | Small | Documentation — stale bug guidance |
+| P2-089 Add CAST( / CONVERT( to sanitize() blocklist (KI-088) | v1.5.0 | ✅ Done | MEDIUM | Trivial | Security defence-in-depth |
+| P2-090 Extend withOdbcWarnings() vendor filter (KI-089) | v1.5.0 | ✅ Done | LOW | Trivial | Driver compatibility |
+| P2-091 Document displayOdbcTable() SFH_OBJECT_ARGS inconsistency (KI-090) | v1.5.0 | ✅ Done | LOW | Trivial | Design consistency |
+| P2-092 Remove EOL packages from composer.json (KI-091) | v1.5.0 | ✅ Done | LOW | Trivial | Developer tooling |
+| P2-093 Add composer.lock; fix CI cache key (KI-092) | v1.5.0 | ⚠️ Partial | LOW | Small | CI reproducibility |
+| P2-094 Fix SECURITY.md v1.0.2 date format (KI-093) | v1.5.0 | ✅ Done | DOCS | Trivial | Documentation consistency |
 | P3-001 Service container | v2.0.0 | Open | HIGH | Large | Architecture |
 | P3-002 Interfaces | v2.0.0 | Open | MEDIUM | Moderate | Testability |
 | P3-003 Unit test suite | v2.0.0 | Open | HIGH | Large | Quality assurance |

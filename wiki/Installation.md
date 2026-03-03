@@ -102,7 +102,7 @@ $wgODBCSources['my-source'] = [
 
 ### Step 4 — Verify the installation
 
-1. Navigate to **Special:Version** on your wiki. The ODBC extension should appear in the "Parser hooks" section with version 1.0.3.
+1. Navigate to **Special:Version** on your wiki. The ODBC extension should appear in the "Parser hooks" section. Confirm the version shown matches the version in `extension.json` in your installation directory (e.g. `extensions/ODBC/extension.json`).
 2. Navigate to **Special:ODBCAdmin** (requires `odbc-admin` permission, granted to sysops by default).
 3. Click **Test Connection** next to your configured source. A green "Connection successful" message confirms the setup is working.
 

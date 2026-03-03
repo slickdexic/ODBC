@@ -150,8 +150,11 @@ $wgODBCSources['advanced-example'] = [
 |-------------------|-------------|
 | `timeout` | Query timeout in seconds; overrides the global `$wgODBCQueryTimeout`. |
 | `allow_queries` | If `true`, allows composed queries for this source even when `$wgODBCAllowArbitraryQueries` is `false`. **WARNING:** Only enable for data sources you fully trust. |
+| `charset` | Explicit character encoding for this source (e.g. `'ISO-8859-1'`, `'Windows-1252'`). When set, encoding detection is skipped entirely and all string values from this source are assumed to use the specified encoding. When omitted, the extension auto-detects encoding from the first row of each result set. |
 | `dsn_params` | Associative array of extra key=value pairs appended to the driver connection string. |
 | `trust_certificate` | If `true`, adds `TrustServerCertificate=yes` to the connection string (useful for SQL Server with self-signed certs). |
+| `host` | *Progress OpenEdge only.* Alternative to `server`; maps to `Host=` in the ODBC connection string. Use this instead of `server` for OpenEdge sources. |
+| `db` | *Progress OpenEdge only.* Alternative to `database`; maps to `DB=` in the ODBC connection string. Use this instead of `database` for OpenEdge sources. |
 | `prepared` | Associative array of named prepared SQL statements for this source. Format: `'name' => 'SQL with ? placeholders'` |
 
 ### Global Settings
@@ -191,6 +194,14 @@ $wgODBCMaxQueriesPerPage = 0;
 // Enable the channel in LocalSettings.php:
 //   $wgDebugLogGroups['odbc-slow'] = '/var/log/mediawiki/odbc-slow.log';
 $wgODBCSlowQueryThreshold = 0;
+
+// Maximum number of ODBC connections cached per PHP worker process (default: 10).
+// In PHP-FPM deployments, the total system-wide connection count equals this value
+// multiplied by the number of active FPM worker processes.
+// Example: 10 connections × 20 workers = up to 200 total ODBC connections.
+// Connections beyond this per-process limit trigger LRU eviction of the
+// least-recently-used handle.
+$wgODBCMaxConnections = 10;
 ```
 
 ### Permissions
@@ -249,11 +260,12 @@ Retrieves data from an ODBC source and stores it in page-scoped variables.
 | `where=` | WHERE clause conditions |
 | `order by=` | ORDER BY clause |
 | `group by=` | GROUP BY clause |
-| `having=` | HAVING clause |
+| `having=` | HAVING clause. **Requires `group by=`** — using `having=` without `group by=` will return an error before the query reaches the database. |
 | `limit=` | Maximum rows to return (capped by `$wgODBCMaxRows`) |
 | `query=` / `prepared=` | Name of a prepared statement (defined in source config) |
 | `parameters=` | Separated list of parameters for a prepared statement (e.g., `12345` or `value1,value2`). Default separator is `,`. **Values containing commas** must use `separator=` to specify a different delimiter (see below). |
 | `separator=` | Delimiter used to split `parameters=` values. Default: `,`. Use `separator=\|` (or any other char) when parameter values contain commas, e.g. for names like `Smith, John`. |
+| `null_value=` | String to display in place of a database NULL value. Default: `''` (empty string, backward-compatible). Use e.g. `null_value=N/A` or `null_value=—` to give NULL cells a visible, distinct representation. |
 | `suppress error` | Suppress error messages on failure (returns empty result instead) |
 
 ### `{{#odbc_value:}}` — Display Single Value
@@ -483,7 +495,7 @@ ODBC/
 - **Admin interface enforcement**: `Special:ODBCAdmin` enforces SELECT-only queries even for administrators
 - **CSRF protection**: All state-changing actions in the admin interface require a valid session token
 - **Query logging**: All executed queries are logged to the debug log for audit trails
-- **Connection pooling limits**: Maximum of `$wgODBCMaxConnections` (default: 10) cached connections across all sources combined to prevent resource exhaustion
+- **Connection pooling limits**: Maximum of `$wgODBCMaxConnections` (default: 10) cached connections **per PHP worker process**. In PHP-FPM deployments, multiply by the number of worker processes for the total system-wide ODBC connection count.
 
 ## Troubleshooting
 
@@ -532,7 +544,7 @@ The query contains characters or keywords that are blocked for security:
 - **Add database indexes**: Ensure frequently queried columns are indexed
 - **Limit result sets**: Use the `limit=` parameter to reduce rows returned
 - **Optimize queries**: Use prepared statements with appropriate WHERE clauses
-- **Check connection pooling**: The connection pool defaults to 10 simultaneous connections across all sources combined. Increase by setting `$wgODBCMaxConnections` in `LocalSettings.php` (e.g., `$wgODBCMaxConnections = 20;`)
+- **Check connection pooling**: The connection pool defaults to 10 cached connections **per PHP worker process**. In PHP-FPM deployments, the total system-wide ODBC connection count equals `$wgODBCMaxConnections` multiplied by the number of active worker processes. Increase by setting `$wgODBCMaxConnections` in `LocalSettings.php` (e.g., `$wgODBCMaxConnections = 20;`). Be aware that high values in PHP-FPM environments can exhaust database connection limits.
 
 ### "Connection test failed" in admin interface
 - The connection may be alive but returning an error code

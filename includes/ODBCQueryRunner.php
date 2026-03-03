@@ -101,6 +101,15 @@ class ODBCQueryRunner {
 		self::sanitize( $groupBy, 'group by' );
 		self::sanitize( $having, 'having' );
 
+		// HAVING without GROUP BY is invalid on PostgreSQL and SQL Server.
+		// Catch it early and return a clear error rather than letting the DBMS
+		// issue a cryptic driver-level message (KI-064 / P2-064).
+		if ( $having !== '' && $groupBy === '' ) {
+			throw new MWException(
+				wfMessage( 'odbc-error-having-without-groupby' )->text()
+			);
+		}
+
 		// Validate columns, build SELECT list — single pass.
 		$selectCols = [];
 		foreach ( $columns as $alias => $dbCol ) {
@@ -258,6 +267,10 @@ class ODBCQueryRunner {
 						}
 					}
 
+					// Start timing before odbc_execute() so the slow-query threshold correctly
+					// measures total execution time (DB processing + row fetch), not just fetch time (KI-073).
+					$queryStart = microtime( true );
+
 					$success = odbc_execute( $stmt, $params ?: [] );
 					if ( !$success ) {
 						$odbcErr = odbc_errormsg( $this->connection );
@@ -269,24 +282,43 @@ class ODBCQueryRunner {
 						);
 					}
 
-					$queryStart = microtime( true );
+					// Detect result-set encoding once from the first non-empty string value,
+					// then apply it uniformly to all rows (KI-069 / P2-069).
+					// O(1) mb_detect_encoding() calls per query instead of O(rows × columns).
+					// A per-source 'charset' key in $wgODBCSources overrides auto-detection.
+					$resultEncoding = $this->config['charset'] ?? null;
+					$encodingDetected = ( $resultEncoding !== null );
 
 					// Fetch results, enforcing row limit.
 					$result = [];
 					$rowCount = 0;
 					while ( ( $row = odbc_fetch_array( $stmt ) ) && $rowCount < $maxRows ) {
-						// Convert encoding to UTF-8 if needed.
+						// On the first row, sample encoding from the first non-empty string value.
+						if ( !$encodingDetected ) {
+							foreach ( $row as $sampleValue ) {
+								if ( $sampleValue !== null && is_string( $sampleValue ) && $sampleValue !== '' ) {
+									$detected = mb_detect_encoding(
+										$sampleValue,
+										[ 'UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252', 'ASCII' ],
+										true
+									);
+									if ( $detected ) {
+										$resultEncoding = $detected;
+									}
+									break; // One sample per result set is sufficient.
+								}
+							}
+							$encodingDetected = true; // Do not re-probe on subsequent rows.
+						}
+
+						// Convert non-UTF-8 rows in a single pass per row.
+						$needsConversion = $resultEncoding !== null
+							&& $resultEncoding !== 'UTF-8'
+							&& $resultEncoding !== 'ASCII';
 						$cleanRow = [];
 						foreach ( $row as $key => $value ) {
-							if ( $value !== null && is_string( $value ) ) {
-								$encoding = mb_detect_encoding(
-									$value,
-									[ 'UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252', 'ASCII' ],
-									true
-								);
-								if ( $encoding && $encoding !== 'UTF-8' && $encoding !== 'ASCII' ) {
-									$value = mb_convert_encoding( $value, 'UTF-8', $encoding );
-								}
+							if ( $needsConversion && $value !== null && is_string( $value ) ) {
+								$value = mb_convert_encoding( $value, 'UTF-8', $resultEncoding );
 							}
 							$cleanRow[$key] = $value;
 						}
@@ -354,7 +386,14 @@ class ODBCQueryRunner {
 		// These are matched as plain substrings because they are structural operators,
 		// not identifiers — word boundaries do not apply to them.
 		// '#' is the MySQL single-line comment character (equivalent to '--').
-		$charPatterns = [ ';', '--', '#', '/*', '*/', '<?', 'CHAR(', 'CONCAT(' ];
+		//
+		// CAST( and CONVERT( are included as defence-in-depth against hex-encoding obfuscation:
+		//   CAST(0x44524F50 AS CHAR)          → 'DROP'  (SQL Server / MySQL)
+		//   CONVERT(0x44454C455445 USING utf8) → 'DELETE' (MySQL)
+		// Note: CONVERT() also appears in legitimate read-only SQL (e.g. CONVERT(price, DECIMAL)).
+		// Operators who need CONVERT() in composed queries should use the prepared-statement path.
+		// See KI-088 / P2-089 for background. (KI-088)
+		$charPatterns = [ ';', '--', '#', '/*', '*/', '<?', 'CHAR(', 'CONCAT(', 'CAST(', 'CONVERT(' ];
 		foreach ( $charPatterns as $pattern ) {
 			if ( strpos( $upper, strtoupper( $pattern ) ) !== false ) {
 				throw new MWException(
@@ -419,24 +458,37 @@ class ODBCQueryRunner {
 	/**
 	 * Validate that a string is a valid SQL identifier (alphanumeric + underscore).
 	 *
+	 * Accepts unqualified names (`table`), two-part names (`schema.table`), and
+	 * three-part names (`catalog.schema.table`). Trailing dots, double dots, and
+	 * chains deeper than three segments are all rejected (KI-065 / P2-065).
+	 *
+	 * Promoted to public static so that EDConnectorOdbcGeneric can validate alias
+	 * keys before injecting them into SQL (KI-067 / P2-067).
+	 *
 	 * @param string $identifier The identifier to validate.
 	 * @param string $context Context for error messages.
 	 * @throws MWException If invalid.
 	 */
-	private static function validateIdentifier( string $identifier, string $context ): void {
+	public static function validateIdentifier( string $identifier, string $context ): void {
 		if ( $identifier === '' || $identifier === '*' ) {
 			return; // Allow empty and wildcard.
 		}
-		
-		// Allow identifiers with: letters, numbers, underscore, dot (for qualified names).
+
 		// Limit length to prevent abuse.
 		if ( strlen( $identifier ) > 128 ) {
 			throw new MWException(
 				wfMessage( 'odbc-error-identifier-too-long', $context )->text()
 			);
 		}
-		
-		if ( !preg_match( '/^[a-zA-Z_][a-zA-Z0-9_\.]*$/', $identifier ) ) {
+
+		// Allow 1–3 properly-formed dot-separated identifier segments:
+		//   table              → valid
+		//   schema.table       → valid
+		//   catalog.schema.table → valid
+		//   table.             → invalid (trailing dot)
+		//   table..column      → invalid (double dot)
+		//   a.b.c.d.e          → invalid (too deep)
+		if ( !preg_match( '/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*){0,2}$/', $identifier ) ) {
 			throw new MWException(
 				wfMessage( 'odbc-error-invalid-identifier', $identifier, $context )->text()
 			);
@@ -498,6 +550,7 @@ class ODBCQueryRunner {
 	 * @return bool True if the driver uses TOP n; false otherwise.
 	 */
 	public static function requiresTopSyntax( array $config ): bool {
+		wfDeprecated( __METHOD__, '1.1.0', 'ODBC' );
 		return self::getRowLimitStyle( $config ) === 'top';
 	}
 

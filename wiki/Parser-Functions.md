@@ -47,6 +47,7 @@ Executes a query against a configured ODBC source and stores results in page-sco
 | `group by=` | No | Composed | `GROUP BY` clause. |
 | `having=` | No | Composed | `HAVING` clause. |
 | `limit=` | No | Both | Maximum rows to return. Cannot exceed `$wgODBCMaxRows`. |
+| `null_value=` | No | Both | String to substitute for database NULL values in result cells. Default: `''` (empty string, fully backward-compatible). Set to a visible sentinel (e.g. `null_value=N/A` or `null_value=—`) to distinguish NULL from an actual empty string in templates. Available since v1.5.0. |
 | `suppress error` | No | Both | If present (no value needed), suppresses error messages on failure — the function returns empty output instead. |
 
 ### Data Mappings — `data=`
@@ -150,7 +151,7 @@ Out-of-range integers (e.g. `5` when only 3 rows exist) silently return the defa
 ```
 
 ```wiki
-{{# Access a specific row of a multi-row result: }}
+<!-- Access a specific row of a multi-row result: -->
 {{#odbc_query: source=hr-db | query=top_earners | data=name=EmpName,salary=Salary }}
 
 Highest earner: {{#odbc_value: name | (none) | 1 }}

@@ -169,10 +169,10 @@ In **ad-hoc mode** (`$wgODBCAllowArbitraryQueries = true` or per-source `allow_q
 
 ## Known Security Limitations
 
-| # | Description | Mitigation |
-|---|-------------|------------|
-| SQL keyword blocklist is not exhaustive | New obfuscation techniques or database-specific functions may bypass it | Use prepared statements |
-| `@odbc_setoption` timeout failures (KI-033) | Fixed in v1.1.0: driver timeout failures are now written to the ODBC debug log | Enable `$wgDebugLogFile`; not a direct security issue but affects defence-in-depth |
+| Description | Mitigation |
+|-------------|------------|
+| SQL keyword blocklist is not exhaustive — new obfuscation techniques or database-specific functions may bypass it | Use prepared statements exclusively; `$wgODBCAllowArbitraryQueries` is for trusted internal deployments only |
+| Query timeout is best-effort — not all ODBC drivers support `SQL_QUERY_TIMEOUT`; failure is logged to the ODBC debug channel | Monitor debug log; use a read-only database account to limit blast radius |
 
 ---
 
@@ -183,5 +183,11 @@ In **ad-hoc mode** (`$wgODBCAllowArbitraryQueries = true` or per-source `allow_q
 | v1.0.0 | Initial release |
 | v1.0.1 | Parser function magic word case sensitivity fixed |
 | v1.0.2 | XSS fix in `#display_odbc_table` column output; wikitext injection fix in `escapeTemplateParam`; UNION keyword added to blocklist; password stripped from ODBC error messages; CSRF token added to admin POST actions |
-| v1.0.3 | Cache key collision fix (prevented cross-user data leakage with caching enabled); `#` MySQL comment added to blocklist; `$wgODBCMaxRows` enforced in External Data connector; connection liveness detection added || v1.1.0 | UNION word-boundary matching fix (KI-024) — identifiers like `TRADE_UNION_ID` no longer falsely blocked; connection string value escaping (KI-025) — `;`/`{`/`}` in credentials now correctly handled; sanitizer word-boundary fix for all DDL/DML keywords (KI-032); per-page query limit added (`$wgODBCMaxQueriesPerPage`, KI-018); timeout failures now logged instead of silently discarded (KI-033) |
+| v1.0.3 | Cache key collision fix (prevented cross-user data leakage with caching enabled); `#` MySQL comment added to blocklist; `$wgODBCMaxRows` enforced in External Data connector; connection liveness detection added |
+| v1.1.0 | UNION word-boundary matching fix (KI-024) — identifiers like `TRADE_UNION_ID` no longer falsely blocked; connection string value escaping (KI-025) — `;`/`{`/`}` in credentials now correctly handled; sanitizer word-boundary fix for all DDL/DML keywords (KI-032); per-page query limit added (`$wgODBCMaxQueriesPerPage`, KI-018); timeout failures now logged instead of silently discarded |
+| v1.2.0 | Parser function error returns now correctly marked as HTML (`isHTML: true`) — prevents edge-case wikitext re-parsing of error spans; `withOdbcWarnings()` DRY refactor applied to all error handlers |
+| v1.3.0 | `Special:ODBCAdmin` test-query form now respects `$wgODBCAllowArbitraryQueries` and per-source `allow_queries` — admins could previously run arbitrary SQL even when the policy was disabled |
+| v1.4.0 | `EDConnectorOdbcGeneric` guarded against missing `EDConnectorComposed` — prevents a potential fatal error if External Data is not installed |
+| v1.5.0 | `validateIdentifier()` regex tightened (KI-065) — rejects over-segmented names and malformed dotted identifiers; ED table alias validation via `validateIdentifier()` (KI-067) — closes a potential injection vector in External Data alias parameters; `HAVING` without `GROUP BY` now rejected before reaching the driver (KI-064); `withOdbcWarnings()` now filters to ODBC-originated warnings only (KI-066) |
+
 To report a security vulnerability, see [SECURITY.md](https://github.com/slickdexic/ODBC/blob/main/SECURITY.md).

@@ -55,7 +55,7 @@ If you discover a security vulnerability in this extension, please report it by 
    - Use file system permissions to protect `LocalSettings.php`
 
 2. **Connection Pooling**
-   - Maximum `$wgODBCMaxConnections` (default: 10) cached connections across all sources combined to prevent resource leaks
+   - Maximum `$wgODBCMaxConnections` (default: 10) cached connections **per PHP worker process** — in PHP-FPM deployments, total system connections = `$wgODBCMaxConnections × [FPM worker count]` (e.g. 10 connections × 20 workers = up to 200 total database connections)
    - Connections are health-checked before reuse
    - Stale connections are automatically closed
 
@@ -146,7 +146,7 @@ If you discover a security vulnerability in this extension, please report it by 
 
 2. **Encoding Detection**
    - Automatic encoding conversion uses `mb_detect_encoding` which may occasionally misdetect
-   - Best practice: ensure database returns UTF-8 when possible
+   - Best practice: set `'charset' => 'UTF-8'` (or the appropriate encoding) in `$wgODBCSources` to pin the encoding and bypass detection when the source encoding is known
 
 3. **Prepared Statement Parameters**
    - Parameter types are not explicitly set (relies on ODBC driver inference)
@@ -154,6 +154,17 @@ If you discover a security vulnerability in this extension, please report it by 
    - Test thoroughly with your specific database and driver
 
 ## Security Release History
+
+### Version 1.5.0 (2026-03-03)
+- `withOdbcWarnings()` now filters E_WARNING events to ODBC-originating warnings only (KI-066, P2-066) — non-ODBC PHP warnings from other extensions or the runtime are no longer swallowed by the connection manager's error handler
+- `withOdbcWarnings()` ODBC vendor filter extended to cover Progress OpenEdge (`[Progress]`, `[OpenEdge]`), DataDirect (`[DataDirect]`), and Easysoft (`[Easysoft]`) driver error prefixes in addition to the previously-covered `odbc`, `[unixODBC]`, `[Microsoft]`, `[IBM]`, `[Oracle]` (KI-089, P2-090)
+- `sanitize()` blocklist extended with `CAST(` and `CONVERT(` — closes a hex-encoding obfuscation vector where blocked SQL keywords could be represented as `CAST(0x... AS CHAR)` and bypass the current substring filter (KI-088, P2-089)
+- `validateIdentifier()` regex tightened to reject trailing dots, leading dots, double dots, and more than three dot-separated segments (KI-065, P2-065); method promoted to `public static` for reuse by `EDConnectorOdbcGeneric`
+- `EDConnectorOdbcGeneric::from()` now validates table alias values via `ODBCQueryRunner::validateIdentifier()` before interpolating them into SQL (KI-067, P2-067) — closes a potential SQL injection vector in External Data alias parameters
+- `executeComposed()` now raises a clear error when a `HAVING` clause is supplied without `GROUP BY`, preventing syntactically invalid SQL from reaching the driver (KI-064, P2-064)
+- NULL values in query results are now faithfully distinguished from empty strings via the new `null_value=` parser-function parameter (KI-068, P2-068)
+- Per-result-set encoding detection replaces per-cell `mb_detect_encoding()` calls, reducing CPU overhead; a `charset=` per-source credential key allows pinning the expected encoding (KI-069, P2-069)
+- `$wgODBCMaxConnections` documented as a **per-PHP-worker-process** limit in all relevant locations (KI-070, P2-070)
 
 ### Version 1.4.0 (2026-03-03)
 - `EDConnectorOdbcGeneric.php` guarded against missing `EDConnectorComposed`; prevents latent fatal error if External Data extension is not installed (§3.10 fix, P2-059)
@@ -186,14 +197,14 @@ If you discover a security vulnerability in this extension, please report it by 
 - Connection liveness detection added (ping before reuse) to prevent stale handle errors
 - Connection pool size limit enforced via configurable `$wgODBCMaxConnections`
 
-### Version 1.0.2 (March 2026)
+### Version 1.0.2 (2026-03-02)
 - XSS fix in `#display_odbc_table` column output — values now HTML-escaped before wikitext emission
 - Wikitext injection fix in `escapeTemplateParam` — template parameter values properly escaped
 - `UNION` keyword added to SQL sanitizer blocklist
 - Password stripped from ODBC error messages shown to end users
 - CSRF token validation added to admin POST actions
 
-### Version 1.0.1 (March 2026)
+### Version 1.0.1 (2026-03-01)
 - Added SQL identifier validation to prevent injection via column names
 - Implemented connection health checks to prevent stale connection reuse
 - Added credential sanitization in error messages

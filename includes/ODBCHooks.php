@@ -44,6 +44,11 @@ class ODBCHooks {
 			[ 'ODBCParserFunctions', 'forOdbcTable' ],
 			Parser::SFH_OBJECT_ARGS
 		);
+		// Note: display_odbc_table is intentionally registered without SFH_OBJECT_ARGS
+		// (KI-090). It only needs a template name and a variable prefix; pre-expanded
+		// string arguments via the default variadic convention are sufficient for its
+		// current functionality. If the function is extended to handle nested templates
+		// or lazy argument expansion in a future version, promote it to SFH_OBJECT_ARGS.
 		$parser->setFunctionHook(
 			'display_odbc_table',
 			[ 'ODBCParserFunctions', 'displayOdbcTable' ]

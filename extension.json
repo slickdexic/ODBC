@@ -1,6 +1,6 @@
 {
 	"name": "ODBC",
-	"version": "1.4.0",
+	"version": "1.5.0",
 	"author": [
 		"Paul (Nordstern Group)"
 	],
@@ -51,11 +51,11 @@
 	"config": {
 		"ODBCMaxConnections": {
 			"value": 10,
-			"description": "Maximum number of simultaneous ODBC connections across all sources combined. Connections beyond this limit trigger LRU eviction of the least-recently-used handle. Default is 10."
+			"description": "Maximum number of simultaneous ODBC connections cached per PHP worker process. In PHP-FPM deployments the total system-wide ODBC connection count equals this value multiplied by the number of active worker processes (e.g. 10 connections × 20 workers = up to 200 total connections). Connections beyond this per-process limit trigger LRU eviction of the least-recently-used handle. Default is 10."
 		},
 		"ODBCSources": {
 			"value": {},
-			"description": "Associative array of ODBC data source configurations. Each key is a source ID, each value is an array with keys: dsn, user, password, driver (optional), server (optional), database (optional), options (optional), prepared (optional for named prepared statements)."
+			"description": "Associative array of ODBC data source configurations. Each key is a source ID, each value is an array with keys: dsn (Mode 1 DSN name), driver/server/database (Mode 2 driver-based), or connection_string (Mode 3 raw string). Optional keys: user, password, port, host (Progress OpenEdge), db (Progress OpenEdge), timeout, allow_queries, trust_certificate, charset, dsn_params, prepared (named prepared statements)."
 		},
 		"ODBCAllowArbitraryQueries": {
 			"value": false,

@@ -239,6 +239,10 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 	/**
 	 * Build the FROM clause.
 	 *
+	 * Alias keys are validated through ODBCQueryRunner::validateIdentifier() before
+	 * being injected into SQL, consistent with the identifier-validation invariant
+	 * applied throughout executeComposed() (KI-067 / P2-067).
+	 *
 	 * @param array $tables An associative array of tables.
 	 * @param array $joins JOIN conditions.
 	 * @return string The FROM clause.
@@ -247,6 +251,8 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 		$tableList = [];
 		foreach ( $tables as $alias => $table ) {
 			if ( $alias !== $table && !is_numeric( $alias ) ) {
+				// Validate alias before injecting into SQL (KI-067 / P2-067).
+				ODBCQueryRunner::validateIdentifier( (string)$alias, 'table alias' );
 				$tableList[] = "$table AS $alias";
 			} else {
 				$tableList[] = $table;
@@ -332,11 +338,27 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 			return array_map( static fn( array $row ): \stdClass => (object)$row, $rows );
 		}
 
-		// Standalone mode: execute directly via the pre-opened connection.
+		// Standalone mode: execute via prepare/setoption/execute so that the configured
+		// $wgODBCQueryTimeout (or per-source 'timeout') is applied at statement level,
+		// consistent with ODBCQueryRunner::executeRawQuery() (KI-074 / P2-075).
+		$mainConfig = MediaWiki\MediaWikiServices::getInstance()->getMainConfig();
+		$timeout = (int)( $this->credentials['timeout'] ?? $mainConfig->get( 'ODBCQueryTimeout' ) );
 		try {
-			$rowset = ODBCConnectionManager::withOdbcWarnings(
-				fn() => odbc_exec( $this->odbcConnection, $query )
-			);
+			$rowset = ODBCConnectionManager::withOdbcWarnings( function () use ( $query, $timeout ) {
+				$stmt = odbc_prepare( $this->odbcConnection, $query );
+				if ( !$stmt ) {
+					throw new MWException( odbc_errormsg( $this->odbcConnection ) );
+				}
+				// Apply per-statement timeout when driver supports it.
+				// SQL_HANDLE_STMT = 1, SQL_QUERY_TIMEOUT = 0 (ODBC standard attribute IDs).
+				if ( $timeout > 0 ) {
+					@odbc_setoption( $stmt, 1, 0, $timeout );
+				}
+				if ( !odbc_execute( $stmt, [] ) ) {
+					throw new MWException( odbc_errormsg( $this->odbcConnection ) );
+				}
+				return $stmt;
+			} );
 		} catch ( MWException $e ) {
 			$this->error( 'externaldata-db-invalid-query', $query, $e->getMessage() );
 			return null;
@@ -349,17 +371,37 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 
 		$result = [];
 		$count = 0;
+		// Detect encoding once from the first non-empty string value in the result set,
+		// then apply it uniformly to all rows (consistent with ODBCQueryRunner; KI-069 / P2-069).
+		// A per-source 'charset' credential overrides auto-detection.
+		$resultEncoding = $this->credentials['charset'] ?? null;
+		$encodingDetected = ( $resultEncoding !== null );
 		while ( $row = odbc_fetch_object( $rowset ) ) {
-			// Apply UTF-8 encoding conversion for non-UTF-8 data (partial KI-020 fix).
-			foreach ( $row as $key => $value ) {
-				if ( $value !== null && is_string( $value ) ) {
-					$encoding = mb_detect_encoding(
-						$value,
-						[ 'UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252', 'ASCII' ],
-						true
-					);
-					if ( $encoding && $encoding !== 'UTF-8' && $encoding !== 'ASCII' ) {
-						$row->$key = mb_convert_encoding( $value, 'UTF-8', $encoding );
+			// On the first row, sample a non-empty string cell to identify encoding.
+			if ( !$encodingDetected ) {
+				foreach ( (array)$row as $sampleValue ) {
+					if ( $sampleValue !== null && is_string( $sampleValue ) && $sampleValue !== '' ) {
+						$detected = mb_detect_encoding(
+							$sampleValue,
+							[ 'UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252', 'ASCII' ],
+							true
+						);
+						if ( $detected ) {
+							$resultEncoding = $detected;
+						}
+						break;
+					}
+				}
+				$encodingDetected = true;
+			}
+			// Apply UTF-8 conversion if needed.
+			$needsConversion = $resultEncoding !== null
+				&& $resultEncoding !== 'UTF-8'
+				&& $resultEncoding !== 'ASCII';
+			if ( $needsConversion ) {
+				foreach ( $row as $key => $value ) {
+					if ( $value !== null && is_string( $value ) ) {
+						$row->$key = mb_convert_encoding( $value, 'UTF-8', $resultEncoding );
 					}
 				}
 			}

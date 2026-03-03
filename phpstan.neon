@@ -1,0 +1,26 @@
+parameters:
+    # Level 3: undefined variables, wrong argument counts, basic type mismatches.
+    # Chosen as the initial baseline — safe to analyse without a full MediaWiki
+    # installation.  Target: raise to level 5 in v2.0.0 alongside the PHPUnit
+    # test suite (P3-003).
+    level: 3
+
+    # Source paths to analyse.
+    paths:
+        - includes
+        - ODBCMagic.php
+
+    # Minimum PHP version to target.  Matches extension.json "php": ">= 7.4.0".
+    phpVersion: 70400
+
+    # Provide MediaWiki class/function declarations as a bootstrap file so PHPStan
+    # can resolve type information without a real MediaWiki install.
+    bootstrapFiles:
+        - stubs/MediaWikiStubs.php
+
+    # Treat PHPDoc types as authoritative for type inference.
+    treatPhpDocTypesAsCertain: true
+
+    # Do not exit with a non-zero status for warnings — only errors.
+    # (Warnings are still displayed in the output.)
+    reportUnmatchedIgnoredErrors: false

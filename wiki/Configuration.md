@@ -81,6 +81,9 @@ All options that can appear in a single `$wgODBCSources` entry:
 | `timeout` | int | No | Query timeout in seconds for this source. Overrides `$wgODBCQueryTimeout`. |
 | `allow_queries` | bool | No | If `true`, allow composed ad-hoc queries for this source even when `$wgODBCAllowArbitraryQueries` is globally `false`. Use sparingly. |
 | `trust_certificate` | bool | No | If `true`, adds `TrustServerCertificate=yes` to the connection string (SQL Server only — suppresses SSL cert validation warnings for self-signed certs). |
+| `charset` | string | No | Expected encoding of data returned by this source. When set (e.g. `'charset' => 'ISO-8859-1'`), automatic `mb_detect_encoding()` detection is skipped and all result strings are converted from this encoding to UTF-8. Valid values: any name accepted by `mb_convert_encoding()`. Available since v1.5.0. |
+| `host` | string | No | **Progress OpenEdge only.** Host name or IP address. Maps to `Host=` in the connection string. Use instead of `server` when the driver is a Progress/OpenEdge driver. |
+| `db` | string | No | **Progress OpenEdge only.** Database name. Maps to `DB=` in the connection string. Use instead of `database` when the driver is a Progress/OpenEdge driver. |
 | `dsn_params` | array | No | Additional `key => value` pairs appended to the ODBC connection string. Useful for driver-specific options. |
 | `prepared` | array | No | Named prepared statements. Format: `'query-name' => 'SELECT ... WHERE col = ?'`. See below. |
 

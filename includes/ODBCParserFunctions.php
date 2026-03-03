@@ -194,7 +194,8 @@ class ODBCParserFunctions {
 
 			// Store the results in per-parse scoped variables.
 			$storedData = self::getStoredData( $parser );
-			self::mergeResults( $storedData, $rows, $dataMappings );
+			$nullValue = $params['null_value'] ?? $params['null value'] ?? '';
+			self::mergeResults( $storedData, $rows, $dataMappings, $nullValue );
 			self::setStoredData( $parser, $storedData );
 
 		} catch ( MWException $e ) {
@@ -207,18 +208,6 @@ class ODBCParserFunctions {
 		return [ '', 'noparse' => true ];
 	}
 
-	/**
-	 * {{#odbc_value:}} — Display a single variable from the stored ODBC data.
-	 *
-	 * Usage: {{#odbc_value:variableName}} or {{#odbc_value:variableName|default}}
-	 *
-	 * Returns the first value in the variable's array, or the default.
-	 *
-	 * @param Parser $parser
-	 * @param string $varName Variable name.
-	 * @param string $default Default value if variable is not set.
-	 * @return string The value.
-	 */
 	/**
 	 * {{#odbc_value:}} — Retrieve a single stored value by variable name.
 	 *
@@ -309,15 +298,20 @@ class ODBCParserFunctions {
 
 		$output = '';
 		for ( $i = 0; $i < $rowCount; $i++ ) {
-			$rowText = $templateText;
+			// Build a replacement map for this row, then apply it in a single strtr() pass.
+			// This is O(rows) total string operations rather than O(rows × variables)
+			// str_replace() calls (KI §5.9 / P2-071).
+			$map = [];
 			foreach ( $storedData as $varName => $values ) {
 				$value = (string)( $values[$i] ?? '' );
-				// Prevent fake {{{varName}}} placeholders in db values from being
-				// resolved as further substitutions in the next str_replace call.
+				// Prevent fake {{{varName}}} placeholders in database values from being
+				// interpreted as further substitutions. strtr() processes in a single
+				// pass so there is no chaining risk, but the escaping is still needed
+				// to protect against literal triple-brace sequences in the data.
 				$escapedValue = str_replace( '{{{', '&#123;&#123;&#123;', $value );
-				$rowText = str_replace( '{{{' . $varName . '}}}', $escapedValue, $rowText );
+				$map['{{{' . $varName . '}}}'] = $escapedValue;
 			}
-			$output .= $rowText;
+			$output .= strtr( $templateText, $map );
 		}
 
 		return [ $output, 'noparse' => false ];
@@ -405,8 +399,11 @@ class ODBCParserFunctions {
 	 * @param array $rows The query result rows.
 	 * @param array $mappings Variable-to-column mappings [ 'localVar' => 'dbCol' ].
 	 *                        If empty, all columns are stored using lowercase names.
+	 * @param string $nullValue String to store in place of a database NULL value.
+	 *                          Defaults to '' (empty string) for backward compatibility.
+	 *                          Set via the null_value= parameter in {{#odbc_query:}}.
 	 */
-	private static function mergeResults( array &$storedData, array $rows, array $mappings ): void {
+	private static function mergeResults( array &$storedData, array $rows, array $mappings, string $nullValue = '' ): void {
 		foreach ( $rows as $row ) {
 			// Build a case-insensitive lookup map for this row once (O(cols) per row).
 			// This avoids the O(cols) inner scan per mapping that the previous code used.
@@ -421,8 +418,16 @@ class ODBCParserFunctions {
 					if ( !isset( $storedData[$localVar] ) ) {
 						$storedData[$localVar] = [];
 					}
-					$value = $rowLower[ strtolower( $dbCol ) ] ?? '';
-					$storedData[$localVar][] = (string)$value;
+					$dbColLower = strtolower( $dbCol );
+					// Distinguish between column-not-present ('' fallback) and
+					// column-present-but-NULL ($nullValue), so NULL can be represented
+					// distinctly from a missing column (KI-068 / P2-068).
+					if ( array_key_exists( $dbColLower, $rowLower ) ) {
+						$rawValue = $rowLower[$dbColLower];
+						$storedData[$localVar][] = $rawValue !== null ? (string)$rawValue : $nullValue;
+					} else {
+						$storedData[$localVar][] = '';
+					}
 				}
 			} else {
 				// No explicit mapping — store all columns using their lowercase names.
@@ -430,7 +435,7 @@ class ODBCParserFunctions {
 					if ( !isset( $storedData[$varName] ) ) {
 						$storedData[$varName] = [];
 					}
-					$storedData[$varName][] = (string)( $value ?? '' );
+					$storedData[$varName][] = $value !== null ? (string)$value : $nullValue;
 				}
 			}
 		}

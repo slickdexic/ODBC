@@ -369,21 +369,54 @@ class ODBCConnectionManager {
 	}
 
 	/**
-	 * Execute a callable with PHP E_WARNING errors converted to MWException.
+	 * Execute a callable with ODBC-originated PHP E_WARNING errors converted to MWException.
 	 *
 	 * Centralises the repeated set_error_handler / restore_error_handler pattern used
 	 * around ODBC calls that emit PHP warnings on failure (P2-008).
 	 * The original error handler is always restored, even if an exception is thrown.
+	 *
+	 * Only warnings whose message contains an ODBC driver signature are intercepted.
+	 * Non-ODBC warnings (e.g. from filesystem or network calls made inside the callback)
+	 * are passed through to the next registered handler, preventing misleading
+	 * MWException messages from unrelated PHP warnings (KI-066 / P2-066).
 	 *
 	 * Public to allow ODBCQueryRunner and EDConnectorOdbcGeneric to share this helper
 	 * instead of duplicating the set_error_handler pattern (P2-051).
 	 *
 	 * @param callable $callback The ODBC call to wrap.
 	 * @return mixed The return value of the callable.
-	 * @throws MWException If the callable triggers an E_WARNING.
+	 * @throws MWException If the callable triggers an ODBC-related E_WARNING.
 	 */
 	public static function withOdbcWarnings( callable $callback ) {
 		set_error_handler( static function ( int $errno, string $errstr ): bool {
+			// Only intercept warnings that originate from the ODBC driver or the PHP
+			// odbc_* extension. Non-ODBC warnings are passed to the next handler by
+			// returning false, preventing them from becoming misleading MWExceptions.
+			//
+			// Vendor-prefix strings covered (KI-089 / P2-090):
+			//   'odbc'          — PHP odbc_* function messages, generic driver text
+			//   '[unixODBC]'    — unixODBC driver manager (Linux)
+			//   '[Microsoft]'   — Microsoft ODBC Driver for SQL Server
+			//   '[IBM]'         — IBM DB2 ODBC driver
+			//   '[Oracle]'      — Oracle Instant Client ODBC driver
+			//   '[Progress]'    — Progress OpenEdge ODBC driver (short prefix)
+			//   '[OpenEdge]'    — Progress OpenEdge ODBC driver (long prefix)
+			//   '[DataDirect]'  — Progress DataDirect ODBC drivers
+			//   '[Easysoft]'    — Easysoft ODBC Bridge / ODBC-ODBC Bridge
+			$odbcVendorPrefixes = [
+				'odbc', '[unixODBC]', '[Microsoft]', '[IBM]', '[Oracle]',
+				'[Progress]', '[OpenEdge]', '[DataDirect]', '[Easysoft]',
+			];
+			$isOdbcWarning = false;
+			foreach ( $odbcVendorPrefixes as $prefix ) {
+				if ( stripos( $errstr, $prefix ) !== false ) {
+					$isOdbcWarning = true;
+					break;
+				}
+			}
+			if ( !$isOdbcWarning ) {
+				return false; // Defer to next registered error handler.
+			}
 			throw new MWException( $errstr );
 		}, E_WARNING );
 		try {

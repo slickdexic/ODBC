@@ -1,5 +1,65 @@
 # Upgrade Guide
 
+## Upgrading to 1.5.0 from 1.4.0
+
+Version 1.5.0 is a feature, security-hardening, and quality release. All users are recommended to upgrade.
+
+### Breaking Changes
+
+**None for most deployments.** However, one narrow change may require attention:
+
+**`validateIdentifier()` now rejects over-segmented identifiers (KI-065)** — Identifiers with more than three dot-separated segments (e.g., `a.b.c.d.e`) or names containing leading, trailing, or consecutive dots are now rejected. Standard table and column names in all supported databases use at most three segments (`catalog.schema.table`). If your composed queries use unusual identifiers of this form, you will receive an `odbc-error-illegal-input` error. Migrate affected queries to prepared statements or pre-configure them via DSN.
+
+### New: `null_value=` for `{{#odbc_query:}}`
+
+Database NULL values can now be distinguished from empty strings. By default, NULL is still coerced to `''` (backward-compatible). To assign a visible placeholder:
+
+```wiki
+{{#odbc_query: source=hr | query=employees | null_value=— | data=name=Name,dept=Department }}
+```
+
+NULL cells will contain `—` instead of empty string. This is particularly useful in `#for_odbc_table` templates where empty string and NULL have different business meanings.
+
+### New: `charset=` Per-Source Encoding Override
+
+For sources with a known fixed encoding, you can now bypass the automatic `mb_detect_encoding()` call entirely:
+
+```php
+$wgODBCSources['legacy-db'] = [
+    // ...
+    'charset' => 'ISO-8859-1',  // Skip detection; faster for fixed-encoding sources
+];
+```
+
+Valid values: any encoding name accepted by `mb_convert_encoding()` — e.g. `'UTF-8'`, `'ISO-8859-1'`, `'ISO-8859-15'`, `'Windows-1252'`. When this key is present, the sample-and-detect step is skipped and every result cell is converted from the stated encoding to UTF-8 unconditionally.
+
+### Security: `HAVING` Without `GROUP BY` Now Rejected (KI-064)
+
+`{{#odbc_query:}}` with `having=` but no `group by=` now returns a clear error (`odbc-error-having-without-groupby`) instead of forwarding syntactically invalid SQL to the driver. No action needed unless your templates relied on this being silently forwarded (they would have generated a driver error anyway).
+
+### Security: ED Table Alias Validation (KI-067)
+
+When using External Data's `from=` with table aliases, alias values are now validated through `ODBCQueryRunner::validateIdentifier()` before interpolation into SQL. Malformed aliases now produce a clear MediaWiki error rather than a raw SQL error from the driver.
+
+### Internal Improvements
+
+- **Encoding detection optimised (KI-069)** — `mb_detect_encoding()` is now called once per result set instead of once per string cell. A per-source `charset=` key disables detection entirely.
+- **`forOdbcTable()` substitution optimised** — Template substitution now uses a single `strtr()` call per row instead of an O(variables) `str_replace()` loop.
+- **Slow-query timer fixed (KI-073)** — `$queryStart` was placed after `odbc_execute()`, measuring only row-fetch time. The timer now starts before `odbc_execute()` so `$wgODBCSlowQueryThreshold` measures total query time including DB-side execution.
+- **ED standalone timeout applied (KI-074)** — The External Data standalone path now uses `odbc_prepare()` / `odbc_setoption()` / `odbc_execute()`, applying `$wgODBCQueryTimeout` (or per-source `timeout=`). Previously `odbc_exec()` was used with no timeout.
+- **`requiresTopSyntax()` deprecation warning (KI-075)** — The method now emits `wfDeprecated()` at runtime. Use `ODBCQueryRunner::getRowLimitStyle()` instead.
+- **`withOdbcWarnings()` filters ODBC warnings only (KI-066)** — Non-ODBC PHP warnings from other extensions or the runtime are no longer swallowed.
+
+### Upgrade Steps
+
+1. Replace all files in `extensions/ODBC/` with the new version (or `git pull`).
+2. Clear the PHP opcode cache (restart PHP-FPM or Apache) and any object/parser caches.
+3. If using composed queries, verify your identifiers pass the tightened validator (at most 3 dot-separated segments, no leading/trailing dots).
+4. Test connections via Special:ODBCAdmin.
+5. Optionally set `charset=` in `$wgODBCSources` for sources with known fixed encodings to disable auto-detection overhead.
+
+---
+
 ## Upgrading to 1.4.0 from 1.3.0
 
 Version 1.4.0 is a code quality and developer-tooling release. All users are recommended to upgrade.

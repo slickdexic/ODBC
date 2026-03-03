@@ -25,6 +25,7 @@
 	"odbc-error-admin-select-only": "ODBC error: Only SELECT queries are allowed from the admin interface.",
 	"odbc-error-identifier-too-long": "ODBC error: Identifier in \"$1\" is too long (max 128 characters).",
 	"odbc-error-invalid-identifier": "ODBC error: Invalid identifier \"$1\" in \"$2\". Only alphanumeric characters, underscores, and dots are allowed.",
+	"odbc-error-having-without-groupby": "ODBC error: A HAVING clause requires a GROUP BY clause. Add group by= to your {{#odbc_query:}} call.",
 
 	"odbc-ed-error-illegal": "ODBC connector error: Illegal SQL pattern \"$1\" found in \"$2\" parameter.",
 	"odbc-error-invalid-token": "ODBC error: Invalid security token. Please try again.",
