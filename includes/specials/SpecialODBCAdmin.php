@@ -13,8 +13,8 @@
  * @license GPL-2.0-or-later
  */
 
-use MediaWiki\MediaWikiServices;
 use MediaWiki\Html\Html;
+use MediaWiki\MediaWikiServices;
 
 class SpecialODBCAdmin extends SpecialPage {
 
@@ -103,9 +103,9 @@ class SpecialODBCAdmin extends SpecialPage {
 
 		$specialTitle = $this->getPageTitle();
 		foreach ( $sources as $id => $config ) {
-			$testUrl   = $specialTitle->getLocalURL( [ 'action' => 'test',   'source' => $id ] );
+			$testUrl   = $specialTitle->getLocalURL( [ 'action' => 'test', 'source' => $id ] );
 			$tablesUrl = $specialTitle->getLocalURL( [ 'action' => 'tables', 'source' => $id ] );
-			$queryUrl  = $specialTitle->getLocalURL( [ 'action' => 'query',  'source' => $id ] );
+			$queryUrl  = $specialTitle->getLocalURL( [ 'action' => 'query', 'source' => $id ] );
 
 			$actions  = Html::element( 'a', [ 'href' => $testUrl ],
 				$this->msg( 'odbc-admin-action-test' )->text() );

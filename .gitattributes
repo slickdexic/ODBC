@@ -1,0 +1,22 @@
+# Enforce LF line endings in the repository; let developers use native
+# endings in their working trees (core.autocrlf handles the conversion).
+* text=auto eol=lf
+
+# Explicitly mark binary files
+*.phar binary
+*.sqlite binary
+*.vsidx binary
+
+# Export-ignore: files excluded from `git archive` / GitHub release zips
+.editorconfig       export-ignore
+.gitattributes      export-ignore
+.gitignore          export-ignore
+.github/            export-ignore
+.phpcs.xml          export-ignore
+.vscode/            export-ignore
+codebase_review.md  export-ignore
+improvement_plan.md export-ignore
+phpstan.neon        export-ignore
+setup-dev.ps1       export-ignore
+stubs/              export-ignore
+wiki/               export-ignore

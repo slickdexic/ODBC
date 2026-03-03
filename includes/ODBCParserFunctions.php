@@ -93,7 +93,7 @@ class ODBCParserFunctions {
 	 * @param PPFrame $frame The frame object.
 	 * @param array $args The arguments (PPNode objects).
 	 * @return array [ text, 'noparse' => true, 'isHTML' => true ] for SFH_OBJECT_ARGS.
- *   Success returns empty string; error returns are pre-rendered HTML spans.
+	 *   Success returns empty string; error returns are pre-rendered HTML spans.
 	 */
 	public static function odbcQuery( Parser $parser, PPFrame $frame, array $args ): array {
 		// Check permission.
@@ -215,8 +215,8 @@ class ODBCParserFunctions {
 	 *   {{#odbc_value: varName | default | rowParam }}
 	 *
 	 * @param Parser $parser
-	 * @param string $varName  Variable name set by data= mapping in {{#odbc_query:}}.
-	 * @param string $default  Value returned when varName is absent or row is out of range.
+	 * @param string $varName Variable name set by data= mapping in {{#odbc_query:}}.
+	 * @param string $default Value returned when varName is absent or row is out of range.
 	 * @param string $rowParam Row selector (KI-019). Accepts:
 	 *                         - omitted / empty / "0" → first row (backward-compatible default)
 	 *                         - positive integer, e.g. "2" → that row (1-indexed)
@@ -518,8 +518,8 @@ class ODBCParserFunctions {
 				$local = trim( substr( $pair, 0, $eqPos ) );
 				$db = trim( substr( $pair, $eqPos + 1 ) );
 				// Validate lengths.
-				if ( strlen( $local ) > 0 && strlen( $local ) <= 64 && 
-				     strlen( $db ) > 0 && strlen( $db ) <= 64 ) {
+				if ( strlen( $local ) > 0 && strlen( $local ) <= 64 &&
+					 strlen( $db ) > 0 && strlen( $db ) <= 64 ) {
 					$mappings[$local] = $db;
 				}
 			} else {

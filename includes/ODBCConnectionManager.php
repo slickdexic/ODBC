@@ -19,7 +19,8 @@ class ODBCConnectionManager {
 
 	/** @var array Last-used timestamp (microtime) for each pooled connection, keyed by source ID.
 	 *              Used by the LRU eviction policy to discard the least-recently-used connection
-	 *              when the pool is full, rather than the oldest-opened connection (FIFO). */
+	 *              when the pool is full, rather than the oldest-opened connection (FIFO).
+	 */
 	private static array $lastUsed = [];
 
 	/** @var int Fallback maximum number of cached connections (overridden by $wgODBCMaxConnections). */
@@ -194,7 +195,7 @@ class ODBCConnectionManager {
 			// Persistent connections (odbc_pconnect) conflict with explicit disconnect()
 			// calls and can cause stale connection issues.
 			$conn = self::withOdbcWarnings(
-				static fn() => odbc_connect( $dsn, $user, $password )
+				static fn () => odbc_connect( $dsn, $user, $password )
 			);
 		} catch ( MWException $e ) {
 			// Sanitize error message to avoid exposing credentials.
@@ -265,7 +266,7 @@ class ODBCConnectionManager {
 			$password = $config['password'] ?? '';
 
 			$testConn = self::withOdbcWarnings(
-				static fn() => odbc_connect( $dsn, $user, $password )
+				static fn () => odbc_connect( $dsn, $user, $password )
 			);
 
 			if ( !$testConn ) {
@@ -320,7 +321,7 @@ class ODBCConnectionManager {
 		// Any PHP E_WARNING from the driver is converted to MWException; we catch it
 		// and return false rather than letting the exception propagate.
 		try {
-			$result = self::withOdbcWarnings( static fn() => odbc_exec( $conn, $probe ) );
+			$result = self::withOdbcWarnings( static fn () => odbc_exec( $conn, $probe ) );
 			if ( $result !== false ) {
 				odbc_free_result( $result );
 				return true;

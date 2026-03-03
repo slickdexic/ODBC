@@ -40,5 +40,11 @@
 	},
 	"extra": {
 		"installer-name": "ODBC"
+	},
+	"config": {
+		"allow-plugins": {
+			"composer/installers": true,
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
 	}
 }

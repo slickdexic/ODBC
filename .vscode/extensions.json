@@ -1,0 +1,11 @@
+{
+	"recommendations": [
+		"bmewburn.vscode-intelephense-client",
+		"sworber.phpstan",
+		"shevaua.phpcs",
+		"editorconfig.editorconfig",
+		"ms-vscode.live-server",
+		"eamodio.gitlens"
+	],
+	"unwantedRecommendations": []
+}
