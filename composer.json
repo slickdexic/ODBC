@@ -33,6 +33,11 @@
 			"includes/"
 		]
 	},
+	"autoload-dev": {
+		"classmap": [
+			"tests/"
+		]
+	},
 	"extra": {
 		"installer-name": "ODBC"
 	}
