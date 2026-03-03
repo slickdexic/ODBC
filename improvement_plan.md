@@ -1,6 +1,6 @@
 # Improvement Plan: MediaWiki ODBC Extension
 
-**Version targeting:** 1.0.3 (hotfixes — ALL COMPLETE), 1.1.0 (features/architecture — ALL COMPLETE), 1.2.0 (quality/DRY/features — ALL COMPLETE), 1.3.0 (ALL COMPLETE), 1.4.0 (ALL COMPLETE), 1.5.0 (ALL COMPLETE — unreleased; P2-093 partially complete — composer.lock deferred), 2.0.0 (breaking refactor)  
+**Version targeting:** 1.0.3 (hotfixes — ALL COMPLETE), 1.1.0 (features/architecture — ALL COMPLETE), 1.2.0 (quality/DRY/features — ALL COMPLETE), 1.3.0 (ALL COMPLETE), 1.4.0 (ALL COMPLETE), 1.5.0 (ALL COMPLETE — unreleased), 2.0.0 (breaking refactor)  
 **Last updated:** 2026-03-03 (v1.5.0 post-review implementation pass — KI-086 through KI-093 all resolved; P2-087 through P2-094 complete or partially complete)  
 **Based on:** codebase_review.md and KNOWN_ISSUES.md findings
 
@@ -1658,7 +1658,7 @@ Run `composer update` after the change and commit the updated `composer.lock` (s
 **Priority:** LOW (CI reproducibility)  
 **Effort:** Small  
 **Files:** `.github/workflows/ci.yml`; new file `composer.lock`  
-**Status:** ✅ Partially Done — v1.5.0 (2026-03-03) — cache key updated; `composer.lock` must be committed manually before release
+**Status:** ✅ Done — v1.5.0 (2026-03-03) — cache key updated; `composer.lock` committed via dev/setup-environment branch merge
 
 Without a `composer.lock`, dependency resolution is non-deterministic. CI runs on different days can install different transitive-dependency versions despite identical code. The current cache key `hashFiles('composer.json')` does not reflect actual installed versions.
 
@@ -2148,7 +2148,7 @@ The following documentation improvements should be addressed in the next release
 | P2-090 Extend withOdbcWarnings() vendor filter (KI-089) | v1.5.0 | ✅ Done | LOW | Trivial | Driver compatibility |
 | P2-091 Document displayOdbcTable() SFH_OBJECT_ARGS inconsistency (KI-090) | v1.5.0 | ✅ Done | LOW | Trivial | Design consistency |
 | P2-092 Remove EOL packages from composer.json (KI-091) | v1.5.0 | ✅ Done | LOW | Trivial | Developer tooling |
-| P2-093 Add composer.lock; fix CI cache key (KI-092) | v1.5.0 | ⚠️ Partial | LOW | Small | CI reproducibility |
+| P2-093 Add composer.lock; fix CI cache key (KI-092) | v1.5.0 | ✅ Done | LOW | Small | CI reproducibility |
 | P2-094 Fix SECURITY.md v1.0.2 date format (KI-093) | v1.5.0 | ✅ Done | DOCS | Trivial | Documentation consistency |
 | P2-095 Fix escapeTemplateParam() pipe garbling (KI-094) | v1.5.x | ✅ Done | MEDIUM | Trivial | Data corruption in display_odbc_table |
 | P2-096 Date CHANGELOG v1.5.0 + strengthen CI check (KI-095) | v1.5.x | ✅ Done | MEDIUM | Small | Release process — 5th consecutive failure |

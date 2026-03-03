@@ -1500,11 +1500,11 @@ The `composer.json` file references two dependency version ranges that include E
 
 ---
 
-### KI-092 — CI Composer Dependency Cache Uses `hashFiles('composer.json')` Instead of `hashFiles('composer.lock')` ✔ Partially Fixed — v1.5.0
+### KI-092 — CI Composer Dependency Cache Uses `hashFiles('composer.json')` Instead of `hashFiles('composer.lock')` ✅ Fixed — v1.5.0
 
 **Severity:** Minor (CI / Reproducibility)
 **File:** `.github/workflows/ci.yml`
-**Status:** ✅ Partially Fixed — v1.5.0 (P2-093) — cache key updated to include `composer.lock`; `.gitignore` updated so lockfile can be committed; `composer.lock` must be generated and committed before first release
+**Status:** ✅ Fixed — v1.5.0 (P2-093) — cache key updated to include `composer.lock`; `composer.lock` generated and committed
 
 **Description:**
 The GitHub Actions CI workflow caches the `vendor/` directory using a cache key derived from `hashFiles('composer.json')`. The Composer best-practice for reproducible dependency resolution is to cache on `composer.lock` (which pins exact versions), not on `composer.json` (which specifies version ranges). Two separate CI runs with the same `composer.json` and same cache key can install different transitive dependency versions if one of the dependencies released a new patch version between runs — `composer install` without a lockfile resolves the latest version within each constraint.
@@ -1861,4 +1861,4 @@ In real MediaWiki core, `MWException extends Exception`. The PHPStan stubs file 
 
 ---
 
-*Last updated: v1.5.0 (2026-03-09) — KI-094 through KI-105 identified in Review Pass 10 and all resolved. 105 total issues tracked; 103 fully resolved; KI-092 partially resolved (composer.lock still needed); 2 remain open by design (KI-008 SELECT\* default, KI-020 ED standalone caching partial).*
+*Last updated: v1.5.0 (2026-03-09) — KI-094 through KI-105 identified in Review Pass 10 and all resolved. 105 total issues tracked; 104 fully resolved; 1 remains open by design (KI-008 SELECT\* default). KI-020 (ED standalone caching) partially resolved. KI-092 fully resolved — composer.lock committed.*

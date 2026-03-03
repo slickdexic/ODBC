@@ -1998,10 +1998,20 @@ The CHANGELOG `[Unreleased]` pattern (KI-095) is a recurring process failure tha
 |----|-------------|--------|
 | KI-008 | `SELECT *` default when `data=` omitted | Open by design |
 | KI-020 | ED standalone caching | Partially addressed |
-| KI-092 | `composer.lock` not yet committed | Awaiting local generation |
 | P3-001 | Service container conversion | v2.0.0 |
 | P3-002 | Interface extraction | v2.0.0 |
 | P3-003 | Expand unit test suite | Partial (3 files, ~70 assertions) |
 | P3-006 | Parameterized WHERE | v2.0.0 |
+
+### Branch Consolidation (post-implementation)
+
+Merged two feature branches into `main`:
+
+1. **`test/add-phpunit-tests`** — Added PHPUnit test infrastructure (`phpunit.xml.dist`, `tests/bootstrap.php`, 3 unit test files, `composer.json` autoload-dev). CI phpunit job can now execute.
+2. **`dev/setup-environment`** — Added dev tooling (`.editorconfig`, `.gitattributes`, `setup-dev.ps1`, `.vscode/` settings), `composer.lock` (resolves KI-092 fully), PSR-12 code style fixes across all `includes/` files (`fn()` → `fn ()`, phpDoc cleanup, import sorting), and `Config`/`EDConnectorComposed` stubs.
+
+Conflicts resolved in `includes/ODBCParserFunctions.php` (kept `strtr()` fix) and `stubs/MediaWikiStubs.php` (kept `MWException extends Exception`, merged new stubs).
+
+Both branches deleted after merge. Remote branches to be pruned on next push.
 
 **Post-Implementation Assessment:** The extension is now in a fully release-ready state. All functional bugs are resolved, CI runs lint + code style + static analysis + unit tests on every push, and all 14 wiki documentation pages accurately reflect current code behavior. The remaining open items are architectural improvements planned for v2.0.0.
