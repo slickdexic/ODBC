@@ -243,7 +243,7 @@ Retrieves data from an ODBC source and stores it in page-scoped variables.
 
 | Parameter | Description |
 |-----------|-------------|
-| `source=` | The source ID from `$wgODBCSources` (required) |
+| `source=` | The source ID from `$wgODBCSources`. Also accepted as the first positional argument: `{{#odbc_query: mydb \| from=...}}` is equivalent to `{{#odbc_query: source=mydb \| from=...}}`. |
 | `from=` | Table name(s) for the FROM clause |
 | `data=` | Column-to-variable mappings: `localVar=dbColumn,...` |
 | `where=` | WHERE clause conditions |

@@ -238,7 +238,7 @@ class ODBCQueryRunner {
 					$stmt = odbc_prepare( $this->connection, $sql );
 					if ( !$stmt ) {
 						$odbcErr = odbc_errormsg( $this->connection );
-						wfDebugLog( 'odbc', "Prepare failed [{$this->sourceId}]: $sql — $odbcErr" );
+						wfDebugLog( 'odbc', "Prepare failed on source '{$this->sourceId}': $sql — $odbcErr" );
 						throw new MWException(
 							wfMessage( 'odbc-error-prepare-failed', $odbcErr )->text()
 						);
@@ -261,7 +261,7 @@ class ODBCQueryRunner {
 					$success = odbc_execute( $stmt, $params ?: [] );
 					if ( !$success ) {
 						$odbcErr = odbc_errormsg( $this->connection );
-						wfDebugLog( 'odbc', "Execute failed [{$this->sourceId}]: $sql — $odbcErr" );
+						wfDebugLog( 'odbc', "Execute failed on source '{$this->sourceId}': $sql — $odbcErr" );
 						throw new MWException(
 							empty( $params )
 								? wfMessage( 'odbc-error-query-failed', $odbcErr )->text()

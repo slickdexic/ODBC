@@ -37,6 +37,14 @@
 
 use MediaWiki\Title\Title;
 
+// Guard: EDConnectorComposed is provided by the External Data extension.
+// If External Data is not installed, attempting to define a class that extends
+// EDConnectorComposed would produce a fatal 'Class not found' error at autoload
+// time. Returning early here prevents that failure (see §3.10 / P2-059).
+if ( !class_exists( 'EDConnectorComposed', false ) ) {
+	return;
+}
+
 /**
  * EDConnectorOdbcGeneric — an External Data connector that routes through
  * the ODBC extension's connection and query infrastructure.

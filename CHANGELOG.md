@@ -5,7 +5,21 @@ All notable changes to the MediaWiki ODBC Extension will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — v1.3.0
+## [Unreleased] — v1.4.0
+
+### Fixed
+
+- **§3.10 / P2-059 — `EDConnectorOdbcGeneric` guarded against missing `EDConnectorComposed`** — If the External Data extension is not installed, PHP would throw a fatal `Class 'EDConnectorComposed' not found` error at autoload time if any code accidentally referenced `EDConnectorOdbcGeneric`. A `class_exists('EDConnectorComposed', false)` guard at the top of the file now causes the file to return early, preventing the fatal error. The class is still registered in `AutoloadClasses`, but will simply not be defined if External Data is absent.
+- **§5.4 / P2-061 — Log message prefix format standardised** — Two log messages in `executeRawQuery()` used a `[{$sourceId}]:` bracket prefix (`Prepare failed [sourceId]:`, `Execute failed [sourceId]:`). All other log messages use a `on source '{$sourceId}'` format. Both corrected to match the majority format: `Prepare failed on source '...': ...`, `Execute failed on source '...': ...`.
+
+### Improved
+
+- **§5.3 / P2-060 — Positional source argument documented** — `{{#odbc_query: mydb | from=...}}` has always been equivalent to `{{#odbc_query: source=mydb | from=...}}`, but this was undocumented. The inline comment in `odbcQuery()` and the `source=` row in the README parameter table now explicitly describe the positional form.
+- **§6.5 / P2-062 — `composer.json` `require-dev` and `.phpcs.xml` added** — `phpunit/phpunit` and `mediawiki/mediawiki-codesniffer` added as dev dependencies. `composer test` and `composer phpcs` convenience scripts defined. `.phpcs.xml` added with `MediaWiki` ruleset and a 160-char line-length override for SQL/log messages.
+
+---
+
+## [1.3.0] - 2026-03-03
 
 ### Fixed
 

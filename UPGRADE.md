@@ -1,5 +1,41 @@
 # Upgrade Guide
 
+## Upgrading to 1.4.0 from 1.3.0
+
+Version 1.4.0 is a code quality and developer-tooling release. All users are recommended to upgrade.
+
+### Breaking Changes
+
+**None.** Version 1.4.0 is fully backward compatible with 1.3.0.
+
+### New: `composer test` and `composer phpcs`
+
+`require-dev` dependencies and scripts have been added to `composer.json`. After running `composer install --dev`, developers can run:
+
+```bash
+# Run the PHPUnit test suite (once tests are written)
+composer test
+
+# Check coding standards
+composer phpcs
+```
+
+The `.phpcs.xml` configuration file applies the `MediaWiki` ruleset to all files in `includes/` with a 160-character line-length override.
+
+### Internal Improvements
+
+- **`EDConnectorOdbcGeneric` guarded against missing External Data** — Prevents a potential fatal error if External Data is not installed and the class file is accidentally loaded.
+- **Positional source argument documented** — `{{#odbc_query: mydb | from=...}}` is now documented as equivalent to `{{#odbc_query: source=mydb | from=...}}`.
+- **Log format standardised** — `Prepare failed [{sourceId}]:` and `Execute failed [{sourceId}]:` log messages now use the `on source '...'` format consistent with all other messages.
+
+### Upgrade Steps
+
+1. Replace all files in `extensions/ODBC/` with the new version (or `git pull`).
+2. Clear the PHP opcode cache and any object/parser caches.
+3. Test connections via Special:ODBCAdmin.
+
+---
+
 ## Upgrading to 1.3.0 from 1.2.0
 
 Version 1.3.0 is a quality and security-consistency release. All users are recommended to upgrade.

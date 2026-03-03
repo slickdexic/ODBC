@@ -121,7 +121,11 @@ class ODBCParserFunctions {
 		// Parse named arguments from PPNode objects.
 		$params = self::parseArgs( $args, $frame );
 
-		// Validate required parameter: source (standardize on 'source' but accept 'db' for compatibility).
+		// Validate required parameter: source ID.
+		// Accepted as named ('source=mydb') or as the first positional argument:
+		// '{{#odbc_query: mydb | from=...}}' is equivalent to
+		// '{{#odbc_query: source=mydb | from=...}}'.  This positional form is intentional
+		// for brevity but is undocumented in templates to avoid confusion (§5.3 / P2-060).
 		$sourceId = $params['source'] ?? ( $params[0] ?? '' );
 		if ( $sourceId === '' ) {
 			return [ self::formatError( wfMessage( 'odbc-error-no-source' )->text() ), 'noparse' => true, 'isHTML' => true ];

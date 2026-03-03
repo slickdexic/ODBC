@@ -12,6 +12,18 @@
 	"suggest": {
 		"mediawiki/external-data": "For integration with External Data extension's parser functions (provides #get_db_data with ODBC support)"
 	},
+	"require-dev": {
+		"phpunit/phpunit": "^9.0 || ^10.0",
+		"mediawiki/mediawiki-codesniffer": "^44.0"
+	},
+	"scripts": {
+		"test": [
+			"phpunit --colors=always"
+		],
+		"phpcs": [
+			"phpcs -p -s"
+		]
+	},
 	"autoload": {
 		"classmap": [
 			"includes/"

@@ -1054,6 +1054,50 @@ Mapping pairs longer than 256 characters were silently skipped. Template authors
 
 `cols` is a deprecated presentation attribute in HTML5. Width should be controlled via CSS.
 
+---
+
+### P2-059 — Guard `EDConnectorOdbcGeneric` Against Missing `EDConnectorComposed` (§3.10) ✦ NEW (2026-03-03)
+
+**Priority:** MEDIUM (reliability)  
+**Effort:** Trivial  
+**Files:** `includes/connectors/EDConnectorOdbcGeneric.php`  
+**Status:** ✅ Done (v1.4.0) — `class_exists('EDConnectorComposed', false)` guard added; file returns early if External Data is absent.
+
+The class extends `EDConnectorComposed`, provided by External Data. Registration in `AutoloadClasses` means PHP can autoload the file even when External Data is absent. The early-return guard prevents the `Class not found` fatal error.
+
+---
+
+### P2-060 — Document Positional Source Argument in `{{#odbc_query:}}` (§5.3) ✦ NEW (2026-03-03)
+
+**Priority:** LOW (documentation clarity)  
+**Effort:** Trivial  
+**Files:** `includes/ODBCParserFunctions.php`, `README.md`  
+**Status:** ✅ Done (v1.4.0) — Inline comment and README parameter table updated.
+
+The positional first-argument form (`{{#odbc_query: mydb | ...}}`) was accepted but undocumented, making it a hidden behaviour that could surprise future contributors or template authors.
+
+---
+
+### P2-061 — Standardise `wfDebugLog` Message Prefix Format (§5.4) ✦ NEW (2026-03-03)
+
+**Priority:** LOW (code quality)  
+**Effort:** Trivial  
+**Files:** `includes/ODBCQueryRunner.php`  
+**Status:** ✅ Done (v1.4.0) — Two log messages changed from `[{$sourceId}]:` to `on source '{$sourceId}':` format.
+
+Two error-path log entries used a bracket prefix inconsistent with all other messages.
+
+---
+
+### P2-062 — Add `require-dev` and `.phpcs.xml` for Developer Tooling (§6.5) ✦ NEW (2026-03-03)
+
+**Priority:** LOW (developer experience)  
+**Effort:** Small  
+**Files:** `composer.json`, `.phpcs.xml`  
+**Status:** ✅ Done (v1.4.0) — `phpunit/phpunit` and `mediawiki/mediawiki-codesniffer` added as dev dependencies; `composer test` and `composer phpcs` scripts defined; `.phpcs.xml` created with `MediaWiki` ruleset.
+
+Previously there was no defined way to run tests or check coding standards. This lays the groundwork for contributors to add PHPUnit tests.
+
  (not necessarily at the wiki-user level) and require careful planning. They align the extension with MediaWiki 1.42+ and PHP 8.x best practices.
 
 ---
@@ -1268,6 +1312,10 @@ The following documentation improvements should be addressed in the next release
 | P2-056 Enforce AllowArbitraryQueries in admin runTestQuery (§2.2) | v1.3.0 | ✅ Done (v1.3.0) | MEDIUM | Trivial | Security / consistency |
 | P2-057 Log dropped data= mapping pairs (§5.6) | v1.3.0 | ✅ Done (v1.3.0) | LOW | Trivial | Diagnostics |
 | P2-058 Remove deprecated cols attr from admin textarea (§5.5) | v1.3.0 | ✅ Done (v1.3.0) | LOW | Trivial | HTML5 compliance |
+| P2-059 Guard EDConnectorOdbcGeneric against missing EDConnectorComposed (§3.10) | v1.4.0 | ✅ Done (v1.4.0) | MEDIUM | Trivial | Reliability / latent fatal error |
+| P2-060 Document positional source arg in odbcQuery() (§5.3) | v1.4.0 | ✅ Done (v1.4.0) | LOW | Trivial | Documentation clarity |
+| P2-061 Standardise wfDebugLog prefix format (§5.4) | v1.4.0 | ✅ Done (v1.4.0) | LOW | Trivial | Code quality / log grep |
+| P2-062 Add require-dev + .phpcs.xml for developer tooling (§6.5) | v1.4.0 | ✅ Done (v1.4.0) | LOW | Small | Developer experience |
 | P3-001 Service container | v2.0.0 | Open | HIGH | Large | Architecture |
 | P3-002 Interfaces | v2.0.0 | Open | MEDIUM | Moderate | Testability |
 | P3-003 Unit test suite | v2.0.0 | Open | HIGH | Large | Quality assurance |

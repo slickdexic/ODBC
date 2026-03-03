@@ -155,6 +155,10 @@ If you discover a security vulnerability in this extension, please report it by 
 
 ## Security Release History
 
+### Version 1.4.0 (2026-03-03)
+- `EDConnectorOdbcGeneric.php` guarded against missing `EDConnectorComposed`; prevents latent fatal error if External Data extension is not installed (§3.10 fix, P2-059)
+- `composer.json` `require-dev` added; `.phpcs.xml` added for MediaWiki coding standards
+
 ### Version 1.3.0 (2026-03-03)
 - `Special:ODBCAdmin` test-query form now respects `$wgODBCAllowArbitraryQueries` and per-source `allow_queries` flag, consistent with `executeComposed()` (§2.2 fix, P2-056)
 - `extension.json` `callback` key replaced with `ExtensionRegistration` hook (deprecation removal, P2-054)

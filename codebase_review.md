@@ -425,17 +425,12 @@ After `sanitize()` passes, the WHERE/ORDER BY/GROUP BY/HAVING strings are direct
 
 ---
 
-### 3.10 `EDConnectorOdbcGeneric` Is Always Autoloaded Even Without External Data
+### 3.10 `EDConnectorOdbcGeneric` Is Always Autoloaded Even Without External Data ✅ Fixed in v1.4.0 (P2-059)
 
-**File:** `extension.json`
+**File:** `extension.json`, `includes/connectors/EDConnectorOdbcGeneric.php`  
+**Status:** ✅ Fixed in v1.4.0 — `class_exists('EDConnectorComposed', false)` guard added at top of `EDConnectorOdbcGeneric.php`; file returns early if External Data is absent.
 
-```json
-"AutoloadClasses": {
-    "EDConnectorOdbcGeneric": "includes/connectors/EDConnectorOdbcGeneric.php"
-}
-```
-
-`EDConnectorOdbcGeneric` extends `EDConnectorComposed`, which only exists when the External Data extension is installed. If PHP ever tries to autoload `EDConnectorOdbcGeneric` without External Data installed, the class definition will fail with a fatal error (`Class 'EDConnectorComposed' not found`). While the class is only instantiated by External Data itself, the autoload registration in the global class map means any stray code reference could trigger the fatal error unpredictably.
+The class is still registered in `AutoloadClasses` (External Data needs to look it up), but the class definition itself is gated on `EDConnectorComposed` being available. If External Data is not installed, the file is loaded but no class is defined — no fatal error.
 
 ---
 
@@ -853,19 +848,19 @@ P2-008 is now fully complete.
 
 ---
 
-### 5.3 `$params['source'] ?? ( $params[0] ?? '' )` Positional Fallback Is Undocumented
+### 5.3 `$params['source'] ?? ( $params[0] ?? '' )` Positional Fallback Is Undocumented ✅ Fixed in v1.4.0 (P2-060)
 
-**File:** `includes/ODBCParserFunctions.php`
+**File:** `includes/ODBCParserFunctions.php`  
+**Status:** ✅ Fixed in v1.4.0 — Inline comment in `odbcQuery()` and README `source=` parameter row updated to document the positional form.
 
-The first positional argument is accepted as the source ID: `{{#odbc_query: mydb | from=table }}` is valid but this is undocumented in the README or any PHPDoc. Undocumented features are bugs waiting to happen.
+The positional behaviour (`{{#odbc_query: mydb | ...}}`) is preserved; it is now documented.
 
 ---
 
-### 5.4 Log Messages Use Inconsistent Separator Characters
+### 5.4 Log Messages Use Inconsistent Separator Characters ✅ Fixed in v1.4.0 (P2-061)
 
-**File:** `includes/ODBCQueryRunner.php`
-
-Some log messages use `—` (em dash) as a separator, others use `:`. Log formatting should be consistent to aid grep-based log parsing and filtering.
+**File:** `includes/ODBCQueryRunner.php`  
+**Status:** ✅ Fixed in v1.4.0 — `Prepare failed [{$sourceId}]:` and `Execute failed [{$sourceId}]:` changed to `on source '{$sourceId}':` format, consistent with all other log messages.
 
 ---
 
