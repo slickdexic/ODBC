@@ -85,6 +85,17 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 
 		// See if this references an $wgODBCSources entry.
 		$this->odbcSourceId = $args['odbc_source'] ?? null;
+
+		// When referencing an ODBCSources entry, inherit the driver name from that source's
+		// config. The External Data source entry for odbc_source mode typically only specifies
+		// 'type' and 'odbc_source', so $this->credentials['driver'] would otherwise be empty,
+		// causing getQuery() to default to LIMIT syntax even for SQL Server sources (KI-027 fix).
+		if ( $this->odbcSourceId !== null ) {
+			$referencedConfig = ODBCConnectionManager::getSourceConfig( $this->odbcSourceId );
+			if ( $referencedConfig !== null ) {
+				$this->credentials['driver'] = $referencedConfig['driver'] ?? '';
+			}
+		}
 	}
 
 	/**
@@ -95,28 +106,30 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 	protected function setCredentials( array $params ) {
 		parent::setCredentials( $params );
 
-		// Build ODBC DSN.
-		if ( !empty( $params['connection_string'] ) ) {
-			$this->credentials['dsn'] = $params['connection_string'];
-		} elseif ( !empty( $params['driver'] ) ) {
-			// Build a driver-based connection string.
-			$parts = [];
-			$parts[] = 'Driver={' . $params['driver'] . '}';
-			if ( isset( $params['server'] ) ) {
-				$parts[] = 'Server=' . $params['server'];
-			}
-			if ( isset( $this->credentials['dbname'] ) ) {
-				$parts[] = 'Database=' . $this->credentials['dbname'];
-			}
-			if ( !empty( $params['trust server certificate'] ) || !empty( $params['trust_certificate'] ) ) {
-				$parts[] = 'TrustServerCertificate=yes';
-			}
-			$this->credentials['dsn'] = implode( ';', $parts );
-		} elseif ( !empty( $params['dsn'] ) ) {
-			$this->credentials['dsn'] = $params['dsn'];
-		} else {
+		// Normalise config keys to the format expected by ODBCConnectionManager::buildConnectionString().
+		// External Data stores the database name in credentials['dbname'] (set by the parent class),
+		// while $wgODBCSources uses 'database' or 'name'. Gather all variants so nothing is lost.
+		$connConfig = [
+			'connection_string'        => $params['connection_string'] ?? '',
+			'dsn'                      => $params['dsn'] ?? '',
+			'driver'                   => $params['driver'] ?? '',
+			'server'                   => $params['server'] ?? '',
+			'database'                 => $params['database'] ?? $params['name'] ?? $this->credentials['dbname'] ?? '',
+			'port'                     => $params['port'] ?? '',
+			'trust_certificate'        => $params['trust_certificate'] ?? '',
+			'trust server certificate' => $params['trust server certificate'] ?? '',
+			'dsn_params'               => $params['dsn_params'] ?? [],
+		];
+
+		$dsn = ODBCConnectionManager::buildConnectionString( $connConfig );
+		if ( $dsn === '' ) {
 			$this->error( 'externaldata-db-incomplete-information', $this->dbId ?? '', 'dsn or driver' );
+			return;
 		}
+
+		// Preserve the driver name so getQuery() can detect SQL Server TOP N syntax later.
+		$this->credentials['driver'] = $params['driver'] ?? '';
+		$this->credentials['dsn'] = $dsn;
 	}
 
 	/**
@@ -174,13 +187,8 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 		// If referencing an ODBCSources entry, connect via ODBCConnectionManager.
 		if ( $this->odbcSourceId !== null ) {
 			try {
+				// ODBCConnectionManager::connect() already validates liveness via SELECT 1 ping.
 				$this->odbcConnection = ODBCConnectionManager::connect( $this->odbcSourceId );
-				// Verify connection is alive.
-				if ( @odbc_error( $this->odbcConnection ) !== '' ) {
-					$this->error( 'externaldata-db-could-not-connect', 
-						'Connection test failed for ODBC source: ' . $this->odbcSourceId );
-					return false;
-				}
 				return true;
 			} catch ( MWException $e ) {
 				$this->error( 'externaldata-db-could-not-connect', $e->getMessage() );
@@ -193,17 +201,13 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 		$user = $this->credentials['user'] ?? '';
 		$password = $this->credentials['password'] ?? '';
 
-		set_error_handler( static function ( $errno, $errstr ) {
-			throw new \RuntimeException( $errstr );
-		}, E_WARNING );
-
 		try {
-			$this->odbcConnection = odbc_connect( $dsn, $user, $password );
-		} catch ( \RuntimeException $e ) {
+			$this->odbcConnection = ODBCConnectionManager::withOdbcWarnings(
+				fn() => odbc_connect( $dsn, $user, $password )
+			);
+		} catch ( MWException $e ) {
 			$this->error( 'externaldata-db-could-not-connect', $e->getMessage() );
 			return false;
-		} finally {
-			restore_error_handler();
 		}
 
 		if ( !$this->odbcConnection ) {
@@ -259,36 +263,75 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 	 * @return string
 	 */
 	protected function getQuery(): string {
-		return strtr( static::TEMPLATE, [
+		$limit = (int)( $this->sqlOptions['LIMIT'] ?? 0 );
+
+		// Detect the correct row-limit syntax for this driver.
+		// SQL Server/Access/Sybase → TOP n, Progress OpenEdge → FIRST n, others → LIMIT n.
+		$rowLimitStyle = $limit > 0 ? ODBCQueryRunner::getRowLimitStyle( [
+			'driver' => $this->credentials['driver'] ?? '',
+		] ) : 'limit';
+
+		if ( $limit > 0 && $rowLimitStyle === 'top' ) {
+			// SQL Server / Access / Sybase: INSERT TOP before column list.
+			$template = 'SELECT TOP ' . $limit . ' $columns $from $where $group $having $order';
+		} elseif ( $limit > 0 && $rowLimitStyle === 'first' ) {
+			// Progress OpenEdge: INSERT FIRST before column list.
+			$template = 'SELECT FIRST ' . $limit . ' $columns $from $where $group $having $order';
+		} else {
+			$template = static::TEMPLATE;
+		}
+
+		return strtr( $template, [
 			'$columns' => static::listColumns( $this->columns ),
-			'$from' => static::from( $this->tables, $this->joins ),
-			'$where' => $this->conditions ? "\nWHERE {$this->conditions}" : '',
-			'$group' => ( $this->sqlOptions['GROUP BY'] ?? '' ) ? "\nGROUP BY {$this->sqlOptions['GROUP BY']}" : '',
-			'$having' => ( $this->sqlOptions['HAVING'] ?? '' ) ? "\nHAVING {$this->sqlOptions['HAVING']}" : '',
-			'$order' => ( $this->sqlOptions['ORDER BY'] ?? '' ) ? "\nORDER BY {$this->sqlOptions['ORDER BY']}" : '',
-			'$limit' => static::limit( $this->sqlOptions['LIMIT'] ?? 0 ),
+			'$from'    => static::from( $this->tables, $this->joins ),
+			'$where'   => $this->conditions ? "\nWHERE {$this->conditions}" : '',
+			'$group'   => ( $this->sqlOptions['GROUP BY'] ?? '' ) ? "\nGROUP BY {$this->sqlOptions['GROUP BY']}" : '',
+			'$having'  => ( $this->sqlOptions['HAVING'] ?? '' ) ? "\nHAVING {$this->sqlOptions['HAVING']}" : '',
+			'$order'   => ( $this->sqlOptions['ORDER BY'] ?? '' ) ? "\nORDER BY {$this->sqlOptions['ORDER BY']}" : '',
+			'$limit'   => ( $rowLimitStyle === 'limit' ) ? static::limit( $limit ) : '',
 		] );
 	}
 
 	/**
 	 * Get query result as a two-dimensional array.
 	 *
+	 * When the connector bridges a $wgODBCSources entry (odbc_source mode), the query is
+	 * routed through ODBCQueryRunner::executeRawQuery() to gain:
+	 * - Query result caching via $wgODBCCacheExpiry (P2-016)
+	 * - Automatic UTF-8 encoding conversion (P2-016)
+	 * - Consistent audit logging
+	 *
+	 * In standalone mode (direct External Data credentials), queries are executed via the
+	 * pre-opened connection with UTF-8 conversion applied row by row.
+	 *
 	 * @return array|null
 	 */
 	protected function fetch(): ?array {
 		$query = $this->getQuery();
+		$maxRows = (int)MediaWiki\MediaWikiServices::getInstance()->getMainConfig()->get( 'ODBCMaxRows' );
 
-		set_error_handler( static function ( $errno, $errstr ) {
-			throw new \RuntimeException( $errstr );
-		}, E_WARNING );
+		// odbc_source mode: route through ODBCQueryRunner for caching, UTF-8, and logging.
+		if ( $this->odbcSourceId !== null ) {
+			try {
+				$runner = new ODBCQueryRunner( $this->odbcSourceId );
+				$rows = $runner->executeRawQuery( $query, [], $maxRows );
+			} catch ( MWException $e ) {
+				$this->error( 'externaldata-db-invalid-query', $query, $e->getMessage() );
+				return null;
+			}
+			// Convert associative arrays to stdClass objects, matching the format
+			// expected by the External Data framework when iterating result rows.
+			return array_map( static fn( array $row ): \stdClass => (object)$row, $rows );
+		}
 
+		// Standalone mode: execute directly via the pre-opened connection.
 		try {
-			$rowset = odbc_exec( $this->odbcConnection, $query );
-		} catch ( \RuntimeException $e ) {
+			$rowset = ODBCConnectionManager::withOdbcWarnings(
+				fn() => odbc_exec( $this->odbcConnection, $query )
+			);
+		} catch ( MWException $e ) {
 			$this->error( 'externaldata-db-invalid-query', $query, $e->getMessage() );
 			return null;
-		} finally {
-			restore_error_handler();
 		}
 
 		if ( !$rowset ) {
@@ -297,8 +340,27 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 		}
 
 		$result = [];
+		$count = 0;
 		while ( $row = odbc_fetch_object( $rowset ) ) {
+			// Apply UTF-8 encoding conversion for non-UTF-8 data (partial KI-020 fix).
+			foreach ( $row as $key => $value ) {
+				if ( $value !== null && is_string( $value ) ) {
+					$encoding = mb_detect_encoding(
+						$value,
+						[ 'UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252', 'ASCII' ],
+						true
+					);
+					if ( $encoding && $encoding !== 'UTF-8' && $encoding !== 'ASCII' ) {
+						$row->$key = mb_convert_encoding( $value, 'UTF-8', $encoding );
+					}
+				}
+			}
 			$result[] = $row;
+			if ( $maxRows > 0 && ++$count >= $maxRows ) {
+				// Respect $wgODBCMaxRows — stop fetching once the global row limit is hit.
+				wfDebugLog( 'odbc', "ED fetch truncated at $maxRows rows (ODBCMaxRows) for source '{$this->dbId}'" );
+				break;
+			}
 		}
 		odbc_free_result( $rowset );
 		return $result;

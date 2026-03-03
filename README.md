@@ -180,6 +180,17 @@ $wgODBCCacheExpiry = 0;
 // Enable External Data extension integration (default: true).
 // Set to false BEFORE calling wfLoadExtension('ODBC') to disable.
 $wgODBCExternalDataIntegration = true;
+
+// Maximum {{#odbc_query:}} calls per page render (default: 0 = unlimited).
+// Set to a positive integer to cap resource use from template-driven query floods.
+$wgODBCMaxQueriesPerPage = 0;
+
+// Slow-query log threshold in seconds (default: 0 = disabled).
+// When set to a positive float (e.g. 2.0), any query whose combined
+// execute+fetch time exceeds this value is logged to the 'odbc-slow' log channel.
+// Enable the channel in LocalSettings.php:
+//   $wgDebugLogGroups['odbc-slow'] = '/var/log/mediawiki/odbc-slow.log';
+$wgODBCSlowQueryThreshold = 0;
 ```
 
 ### Permissions
@@ -247,13 +258,17 @@ Retrieves data from an ODBC source and stores it in page-scoped variables.
 
 ### `{{#odbc_value:}}` — Display Single Value
 
-Displays the first value of a stored variable:
+Displays a stored variable's value. By default returns the first row; pass an optional third argument to select a specific row:
 
 ```wiki
 Employee: {{#odbc_value:name}}
 Department: {{#odbc_value:dept}}
 Default: {{#odbc_value:missing_var|N/A}}
+Row 2:    {{#odbc_value:name|N/A|2}}
+Last row: {{#odbc_value:name|N/A|last}}
 ```
+
+The row selector is 1-indexed. `last` returns the final row. Out-of-range values silently fall back to the default.
 
 ### `{{#for_odbc_table:}}` — Loop with Inline Template
 
@@ -287,6 +302,12 @@ This calls `{{EmployeeRow|name=...|dept=...|email=...}}` for each row.
 ```
 
 ## Complete Example
+
+> **Warning — this example enables features that should NOT be used in production:**
+> - `$wgODBCAllowArbitraryQueries = true` allows wiki editors to construct arbitrary SQL queries. **Leave this `false`** unless every user with `odbc-query` permission is fully trusted.
+> - `$wgGroupPermissions['user']['odbc-query'] = true` grants all logged-in users the ability to query the database. In production, restrict this to a dedicated trusted group.
+>
+> **Recommended production setup:** define all queries as `prepared` statements in `$wgODBCSources`, keep `$wgODBCAllowArbitraryQueries = false`, and grant `odbc-query` only to specific trusted groups (e.g., `$wgGroupPermissions['sysop']['odbc-query'] = true`).
 
 ### LocalSettings.php
 ```php
@@ -462,7 +483,7 @@ ODBC/
 - **Admin interface enforcement**: `Special:ODBCAdmin` enforces SELECT-only queries even for administrators
 - **CSRF protection**: All state-changing actions in the admin interface require a valid session token
 - **Query logging**: All executed queries are logged to the debug log for audit trails
-- **Connection pooling limits**: Maximum of 10 cached connections to prevent resource exhaustion
+- **Connection pooling limits**: Maximum of `$wgODBCMaxConnections` (default: 10) cached connections across all sources combined to prevent resource exhaustion
 
 ## Troubleshooting
 
@@ -511,7 +532,7 @@ The query contains characters or keywords that are blocked for security:
 - **Add database indexes**: Ensure frequently queried columns are indexed
 - **Limit result sets**: Use the `limit=` parameter to reduce rows returned
 - **Optimize queries**: Use prepared statements with appropriate WHERE clauses
-- **Check connection pooling**: Connection pool is limited to 10; increase if needed by modifying MAX_CONNECTIONS constant
+- **Check connection pooling**: The connection pool defaults to 10 simultaneous connections across all sources combined. Increase by setting `$wgODBCMaxConnections` in `LocalSettings.php` (e.g., `$wgODBCMaxConnections = 20;`)
 
 ### "Connection test failed" in admin interface
 - The connection may be alive but returning an error code
@@ -521,7 +542,7 @@ The query contains characters or keywords that are blocked for security:
 
 ### Magic words not working (case sensitivity)
 - Ensure you're using the correct case: `{{#odbc_query:}}` (lowercase)
-- After updating to version 1.0.1+, uppercase variants also work: `{{#ODBC_QUERY:}}`
+- After updating to version 1.0.3+, uppercase variants also work: `{{#ODBC_QUERY:}}`
 - To clear the parser cache for a specific page, perform a null edit or run: `php maintenance/purgeParserCache.php`
 
 ## License

@@ -1,6 +1,6 @@
 {
 	"name": "ODBC",
-	"version": "1.0.2",
+	"version": "1.2.0",
 	"author": [
 		"Paul (Nordstern Group)"
 	],
@@ -49,6 +49,10 @@
 		}
 	},
 	"config": {
+		"ODBCMaxConnections": {
+			"value": 10,
+			"description": "Maximum number of simultaneous ODBC connections across all sources combined. Connections beyond this limit trigger LRU eviction of the least-recently-used handle. Default is 10."
+		},
 		"ODBCSources": {
 			"value": {},
 			"description": "Associative array of ODBC data source configurations. Each key is a source ID, each value is an array with keys: dsn, user, password, driver (optional), server (optional), database (optional), options (optional), prepared (optional for named prepared statements)."
@@ -72,6 +76,14 @@
 		"ODBCExternalDataIntegration": {
 			"value": true,
 			"description": "If true and External Data extension is installed, register as a connector for External Data. Must be set before extension loading."
+		},
+		"ODBCMaxQueriesPerPage": {
+			"value": 0,
+			"description": "Maximum number of {{#odbc_query:}} calls allowed per page render. 0 means no limit (default, for backward compatibility). Set to a positive integer to prevent resource exhaustion from excessive per-page queries. Exceeding the limit returns an error from the offending call; earlier calls on the same page are unaffected."
+		},
+		"ODBCSlowQueryThreshold": {
+			"value": 0,
+			"description": "Execution time in seconds above which a query is logged to the 'odbc-slow' log channel. 0 means disabled (default). Set to a positive float, e.g. 2.0, to enable slow-query logging. Query timing covers odbc_execute() + all row fetches. Requires the 'odbc-slow' channel to be configured in $wgDebugLogGroups."
 		}
 	},
 	"manifest_version": 2

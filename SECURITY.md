@@ -43,8 +43,8 @@ If you discover a security vulnerability in this extension, please report it by 
 
 ### CSRF Protection
 
-- All state-changing actions require a valid edit token
-- Tokens are validated for both GET (with `token` parameter) and POST (with `wpEditToken`) requests
+- State-changing POST actions (e.g., running test queries from the admin interface) require a valid `wpEditToken`
+- Read-only GET actions (connection tests, table / column browsing) do not mutate server state and do not require a token — this follows standard MediaWiki practice for read-only admin views
 - Invalid tokens result in an error message and no action is taken
 
 ### Connection Security
@@ -55,7 +55,7 @@ If you discover a security vulnerability in this extension, please report it by 
    - Use file system permissions to protect `LocalSettings.php`
 
 2. **Connection Pooling**
-   - Maximum 10 cached connections to prevent resource leaks
+   - Maximum `$wgODBCMaxConnections` (default: 10) cached connections across all sources combined to prevent resource leaks
    - Connections are health-checked before reuse
    - Stale connections are automatically closed
 
@@ -141,7 +141,7 @@ If you discover a security vulnerability in this extension, please report it by 
 
 1. **Driver-Dependent Features**
    - Query timeout support varies by ODBC driver
-   - LIMIT syntax handling tries both TOP (SQL Server) and LIMIT (MySQL/PostgreSQL)
+   - LIMIT syntax is chosen based on the configured driver: SQL Server uses `TOP n`, Progress OpenEdge uses `SELECT FIRST n`, and all other drivers use `LIMIT n` appended after the ORDER BY clause
    - Some metadata operations may not work with all drivers
 
 2. **Encoding Detection**
@@ -154,6 +154,35 @@ If you discover a security vulnerability in this extension, please report it by 
    - Test thoroughly with your specific database and driver
 
 ## Security Release History
+
+### Version 1.2.0 (2026-03-03)
+- Error message HTML now correctly flagged as `isHTML` — prevents edge-case re-parsing of error spans as wikitext (§5.2 fix)
+- Query execution timing added to `odbc` debug log; slow-query logging added via `odbc-slow` channel (controlled by new `$wgODBCSlowQueryThreshold` config key)
+- `withOdbcWarnings()` DRY refactor completed — five raw `set_error_handler` closures removed from `ODBCQueryRunner` and `EDConnectorOdbcGeneric`
+- SELECT * observability: `wfDebugLog` warning emitted when `data=` omitted in `{{#odbc_query:}}`
+
+### Version 1.1.0 (2026-03-03)
+- UNION word-boundary matching fix (KI-024) — identifiers like `TRADE_UNION_ID` no longer falsely trigger the sanitizer
+- Connection string value escaping implemented (KI-025) — `;`, `{`, `}` in passwords and server names are now correctly escaped per the ODBC specification
+- SQL sanitizer word-boundary fix for all DDL/DML keywords (KI-032) — keywords now use `\b` boundaries; false positives on identifiers that contain but don't start with blocked keywords are eliminated
+- `validateConfig()` now called before every connection attempt (KI-026)
+- External Data connector inherits driver from referenced `$wgODBCSources` entry (KI-027)
+- Per-page query limit added via `$wgODBCMaxQueriesPerPage` (KI-018) — prevents runaway template-driven query floods
+- Query timeout failures now logged instead of silently discarded (KI-033)
+
+### Version 1.0.3 (2026-03-02)
+- Cache key collision fix — prevented potential cross-user data leakage when caching was enabled
+- `#` MySQL line comment character added to sanitizer blocklist
+- `$wgODBCMaxRows` enforced in External Data connector (previously bypassed)
+- Connection liveness detection added (ping before reuse) to prevent stale handle errors
+- Connection pool size limit enforced via configurable `$wgODBCMaxConnections`
+
+### Version 1.0.2 (March 2026)
+- XSS fix in `#display_odbc_table` column output — values now HTML-escaped before wikitext emission
+- Wikitext injection fix in `escapeTemplateParam` — template parameter values properly escaped
+- `UNION` keyword added to SQL sanitizer blocklist
+- Password stripped from ODBC error messages shown to end users
+- CSRF token validation added to admin POST actions
 
 ### Version 1.0.1 (March 2026)
 - Added SQL identifier validation to prevent injection via column names

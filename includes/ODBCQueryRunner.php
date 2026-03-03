@@ -17,6 +17,12 @@ class ODBCQueryRunner {
 	/** @var int Maximum length of any single composed-query clause (FROM, WHERE, ORDER BY, etc.). */
 	private const MAX_CLAUSE_LENGTH = 1000;
 
+	/** @var int SQL_HANDLE_STMT for odbc_setoption() — identifies a statement handle (ODBC constant). */
+	private const SQL_HANDLE_STMT = 1;
+
+	/** @var int SQL_QUERY_TIMEOUT attribute for odbc_setoption() — sets per-statement timeout in seconds. */
+	private const SQL_QUERY_TIMEOUT = 0;
+
 	/** @var string The source ID. */
 	private $sourceId;
 
@@ -83,27 +89,23 @@ class ODBCQueryRunner {
 			}
 		}
 
-		// Sanitize inputs — block dangerous SQL patterns.
+		// Sanitize clause-level inputs — block dangerous SQL patterns.
 		self::sanitize( $from, 'from' );
 		self::sanitize( $where, 'where' );
 		self::sanitize( $orderBy, 'order by' );
 		self::sanitize( $groupBy, 'group by' );
 		self::sanitize( $having, 'having' );
-		foreach ( $columns as $k => $v ) {
-			self::sanitize( (string)$k, 'data' );
-			self::sanitize( (string)$v, 'data' );
-			// Validate that column/alias names are valid SQL identifiers.
-			self::validateIdentifier( (string)$k, 'column alias' );
-			self::validateIdentifier( (string)$v, 'column name' );
-		}
 
-		// Build SELECT columns.
+		// Validate columns, build SELECT list — single pass.
 		$selectCols = [];
 		foreach ( $columns as $alias => $dbCol ) {
+			self::sanitize( (string)$alias, 'data' );
+			self::sanitize( (string)$dbCol, 'data' );
+			self::validateIdentifier( (string)$alias, 'column alias' );
+			self::validateIdentifier( (string)$dbCol, 'column name' );
 			if ( $alias === $dbCol || is_numeric( $alias ) ) {
 				$selectCols[] = $dbCol;
 			} else {
-				// Properly quote column name and alias to prevent injection.
 				$selectCols[] = $dbCol . ' AS ' . $alias;
 			}
 		}
@@ -112,17 +114,17 @@ class ODBCQueryRunner {
 		$maxRows = $mainConfig->get( 'ODBCMaxRows' );
 		$effectiveLimit = $limit > 0 ? min( $limit, $maxRows ) : $maxRows;
 
-		// Build query with LIMIT in SQL for efficiency.
-		// Use TOP for SQL Server compatibility, LIMIT for others.
-		// This is a simplified approach - in production, detect driver type.
-		// Choose the correct row-limit syntax based on the ODBC driver.
-		// SQL Server and MS Access use TOP n (before column list);
-		// virtually all others (MySQL, PostgreSQL, SQLite, Oracle 12c+) use LIMIT n.
-		$usesTopSyntax = self::requiresTopSyntax( $this->config );
+		// Choose the correct row-limit syntax based on the ODBC driver:
+		// - 'top'   → SELECT TOP n col FROM tbl     (SQL Server, MS Access, Sybase)
+		// - 'first' → SELECT FIRST n col FROM tbl   (Progress OpenEdge)
+		// - 'limit' → SELECT col FROM tbl LIMIT n   (MySQL, PostgreSQL, SQLite, Oracle 12c+, etc.)
+		$rowLimitStyle = self::getRowLimitStyle( $this->config );
 
-		$sql = "SELECT";
-		if ( $effectiveLimit > 0 && $usesTopSyntax ) {
+		$sql = 'SELECT';
+		if ( $effectiveLimit > 0 && $rowLimitStyle === 'top' ) {
 			$sql .= " TOP $effectiveLimit";
+		} elseif ( $effectiveLimit > 0 && $rowLimitStyle === 'first' ) {
+			$sql .= " FIRST $effectiveLimit";
 		}
 		$sql .= " $colStr FROM $from";
 		if ( $where !== '' ) {
@@ -137,7 +139,7 @@ class ODBCQueryRunner {
 		if ( $orderBy !== '' ) {
 			$sql .= " ORDER BY $orderBy";
 		}
-		if ( $effectiveLimit > 0 && !$usesTopSyntax ) {
+		if ( $effectiveLimit > 0 && $rowLimitStyle === 'limit' ) {
 			$sql .= " LIMIT $effectiveLimit";
 		}
 
@@ -198,6 +200,7 @@ class ODBCQueryRunner {
 		// Check cache first if caching is enabled.
 		$mainConfig = MediaWikiServices::getInstance()->getMainConfig();
 		$cacheExpiry = $mainConfig->get( 'ODBCCacheExpiry' );
+		$cache = null;
 		$cacheKey = null;
 
 		if ( $cacheExpiry > 0 ) {
@@ -205,7 +208,7 @@ class ODBCQueryRunner {
 			$cacheKey = $cache->makeKey(
 				'odbc-query',
 				$this->sourceId,
-				md5( $sql . '|' . implode( ',', $params ) . '|' . $maxRows )
+				md5( $sql . '|' . json_encode( $params ) . '|' . $maxRows )
 			);
 			$cached = $cache->get( $cacheKey );
 			if ( $cached !== false ) {
@@ -213,91 +216,108 @@ class ODBCQueryRunner {
 			}
 		}
 
-		set_error_handler( static function ( $errno, $errstr ) {
-			throw new MWException( $errstr );
-		}, E_WARNING );
+		// Determine query timeout for this source.
+		$timeout = (int)( $this->config['timeout'] ?? $mainConfig->get( 'ODBCQueryTimeout' ) );
+		// Slow-query log threshold. 0 = disabled (default).
+		$slowThreshold = (float)$mainConfig->get( 'ODBCSlowQueryThreshold' );
 
-		$resultResource = null;
+		// Wrap all ODBC calls in withOdbcWarnings() so PHP E_WARNINGs (e.g. from
+		// odbc_prepare() or odbc_execute() on connection failure) are automatically
+		// converted to MWException — DRY (P2-051).
+		$stmt = null;
 		try {
-			if ( !empty( $params ) ) {
-				// Prepared statement execution.
-				$stmt = odbc_prepare( $this->connection, $sql );
-				if ( !$stmt ) {
-					$odbcErr = odbc_errormsg( $this->connection );
-				wfDebugLog( 'odbc', "Prepare failed [{$this->sourceId}]: $sql — $odbcErr" );
-					throw new MWException(
-						wfMessage( 'odbc-error-prepare-failed', $odbcErr )->text()
-					);
-				}
-				$success = odbc_execute( $stmt, $params );
-				if ( !$success ) {
-					$odbcErr = odbc_errormsg( $this->connection );
-					wfDebugLog( 'odbc', "Execute failed [{$this->sourceId}]: $sql — $odbcErr" );
-					throw new MWException(
-						wfMessage( 'odbc-error-execute-failed', $odbcErr )->text()
-					);
-				}
-				$resultResource = $stmt;
-			} else {
-				// Direct execution.
-				$resultResource = odbc_exec( $this->connection, $sql );
-				if ( !$resultResource ) {
-					$odbcErr = odbc_errormsg( $this->connection );
-					wfDebugLog( 'odbc', "Query failed [{$this->sourceId}]: $sql — $odbcErr" );
-					throw new MWException(
-						wfMessage( 'odbc-error-query-failed', $odbcErr )->text()
-					);
-				}
-			}
-
-			// Fetch results.
-			$result = [];
-			$rowCount = 0;
-			while ( ( $row = odbc_fetch_array( $resultResource ) ) && $rowCount < $maxRows ) {
-				// Convert encoding to UTF-8 if needed.
-				$cleanRow = [];
-				foreach ( $row as $key => $value ) {
-					if ( $value !== null && is_string( $value ) ) {
-						// More comprehensive encoding detection.
-						$encoding = mb_detect_encoding( 
-							$value, 
-							[ 'UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252', 'ASCII' ], 
-							true 
+			return ODBCConnectionManager::withOdbcWarnings(
+				function () use ( &$stmt, $sql, $params, $maxRows, $timeout, $cacheExpiry, $cache, $cacheKey, $slowThreshold ) {
+					// Always use prepare + execute, even for parameter-less queries.
+					// This enables statement-level timeout and allows the driver to cache the query plan.
+					$stmt = odbc_prepare( $this->connection, $sql );
+					if ( !$stmt ) {
+						$odbcErr = odbc_errormsg( $this->connection );
+						wfDebugLog( 'odbc', "Prepare failed [{$this->sourceId}]: $sql — $odbcErr" );
+						throw new MWException(
+							wfMessage( 'odbc-error-prepare-failed', $odbcErr )->text()
 						);
-						if ( $encoding && $encoding !== 'UTF-8' && $encoding !== 'ASCII' ) {
-							$value = mb_convert_encoding( $value, 'UTF-8', $encoding );
+					}
+
+					// Apply statement-level timeout (SQL_HANDLE_STMT = 1, SQL_QUERY_TIMEOUT = 0).
+					// This is the ODBC-standard approach and better supported by drivers than
+					// the connection-level setting. Not all drivers implement this attribute;
+					// suppress the PHP warning (@ avoids the outer error handler turning it into
+					// an MWException) but check the return value so operators see a log entry
+					// rather than nothing when their driver does not support it (KI-033).
+					if ( $timeout > 0 ) {
+						$timeoutSet = @odbc_setoption( $stmt, self::SQL_HANDLE_STMT, self::SQL_QUERY_TIMEOUT, $timeout );
+						if ( $timeoutSet === false ) {
+							wfDebugLog( 'odbc', "Could not set query timeout ({$timeout}s) for source '{$this->sourceId}'" .
+								" — driver may not support per-statement timeouts. Queries may run indefinitely." );
 						}
 					}
-					$cleanRow[$key] = $value;
+
+					$success = odbc_execute( $stmt, $params ?: [] );
+					if ( !$success ) {
+						$odbcErr = odbc_errormsg( $this->connection );
+						wfDebugLog( 'odbc', "Execute failed [{$this->sourceId}]: $sql — $odbcErr" );
+						throw new MWException(
+							empty( $params )
+								? wfMessage( 'odbc-error-query-failed', $odbcErr )->text()
+								: wfMessage( 'odbc-error-execute-failed', $odbcErr )->text()
+						);
+					}
+
+					$queryStart = microtime( true );
+
+					// Fetch results, enforcing row limit.
+					$result = [];
+					$rowCount = 0;
+					while ( ( $row = odbc_fetch_array( $stmt ) ) && $rowCount < $maxRows ) {
+						// Convert encoding to UTF-8 if needed.
+						$cleanRow = [];
+						foreach ( $row as $key => $value ) {
+							if ( $value !== null && is_string( $value ) ) {
+								$encoding = mb_detect_encoding(
+									$value,
+									[ 'UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252', 'ASCII' ],
+									true
+								);
+								if ( $encoding && $encoding !== 'UTF-8' && $encoding !== 'ASCII' ) {
+									$value = mb_convert_encoding( $value, 'UTF-8', $encoding );
+								}
+							}
+							$cleanRow[$key] = $value;
+						}
+						$result[] = $cleanRow;
+						$rowCount++;
+					}
+
+					odbc_free_result( $stmt );
+					$stmt = null;
+
+					$elapsed = round( microtime( true ) - $queryStart, 3 );
+
+					// Store in cache if caching is enabled.
+					if ( $cacheKey !== null && $cacheExpiry > 0 ) {
+						$cache->set( $cacheKey, $result, $cacheExpiry );
+					}
+
+					wfDebugLog( 'odbc', "Query executed on source '{$this->sourceId}': " .
+						substr( $sql, 0, 100 ) . ( strlen( $sql ) > 100 ? '...' : '' ) .
+						" — Returned $rowCount rows in {$elapsed}s" );
+
+					// Log a warning for slow queries when threshold is configured.
+					if ( $slowThreshold > 0 && $elapsed > $slowThreshold ) {
+						wfDebugLog( 'odbc-slow', "Slow query ({$elapsed}s > threshold {$slowThreshold}s) on source '{$this->sourceId}': " .
+							substr( $sql, 0, 200 ) . ( strlen( $sql ) > 200 ? '...' : '' ) .
+							" — $rowCount rows fetched" );
+					}
+
+					return $result;
 				}
-				$result[] = $cleanRow;
-				$rowCount++;
-			}
-
-			if ( $resultResource ) {
-				odbc_free_result( $resultResource );
-			}
-
-			// Store in cache if caching is enabled.
-			if ( $cacheKey !== null && $cacheExpiry > 0 ) {
-				$cache->set( $cacheKey, $result, $cacheExpiry );
-			}
-
-			// Log successful query execution for audit trail.
-			wfDebugLog( 'odbc', "Query executed on source '{$this->sourceId}': " . 
-				substr( $sql, 0, 100 ) . ( strlen( $sql ) > 100 ? '...' : '' ) . 
-				" - Returned $rowCount rows" );
-
-			return $result;
-
+			);
 		} catch ( MWException $e ) {
-			// Clean up resources on error.
-			if ( $resultResource ) {
-				@odbc_free_result( $resultResource );
+			if ( $stmt ) {
+				@odbc_free_result( $stmt );
 			}
 			throw $e;
-		} finally {
-			restore_error_handler();
 		}
 	}
 
@@ -319,10 +339,17 @@ class ODBCQueryRunner {
 
 		// Strip control characters including null bytes that could bypass checks.
 		$clean = preg_replace( '/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', $input );
+		// Normalize internal whitespace: collapse tabs, multiple spaces, etc. to a single
+		// space so that multi-space or tab-based evasion (e.g. "INTO  OUTFILE", "LOAD\tDATA")
+		// is blocked consistently by the multi-word keyword patterns below (KI-049).
+		$clean = (string)preg_replace( '/\s+/', ' ', $clean );
 		$upper = strtoupper( $clean );
 
-		// Exact-character patterns (always dangerous in composed SQL).
-		$charPatterns = [ ';', '--', '/*', '*/', '<?', 'CHAR(', 'CONCAT(', 'UNION' ];
+		// Exact-character and short-pattern blocklist (always dangerous in composed SQL).
+		// These are matched as plain substrings because they are structural operators,
+		// not identifiers — word boundaries do not apply to them.
+		// '#' is the MySQL single-line comment character (equivalent to '--').
+		$charPatterns = [ ';', '--', '#', '/*', '*/', '<?', 'CHAR(', 'CONCAT(' ];
 		foreach ( $charPatterns as $pattern ) {
 			if ( strpos( $upper, strtoupper( $pattern ) ) !== false ) {
 				throw new MWException(
@@ -331,8 +358,20 @@ class ODBCQueryRunner {
 			}
 		}
 
-		// Keyword patterns — matched as whole words with word-boundary checks
-		// to reduce false positives (e.g. "DESCRIPTION" should not match "DROP").
+		// Keyword patterns — matched with a leading word boundary (\b) to prevent false
+		// positives (e.g. DECLARED_AT, GRANTED_BY, EXECUTIVE must not trigger
+		// DECLARE/GRANT/EXEC).
+		//
+		// Trailing word boundary rules (KI-049):
+		// - Keywords ending with an alphanumeric character get a trailing \b so they are
+		//   matched only as complete words (e.g. \bGRANT\b, \bUNION\b).
+		// - Keywords ending with '_' (e.g. XP_, SP_) MUST NOT have a trailing \b because
+		//   '_' is a PCRE word character: \bXP_\b would never match XP_cmdshell since
+		//   there is no word boundary between '_' and 'c'. These use prefix-only matching
+		//   (\bXP_) to block the entire XP_* / SP_* stored-procedure namespace.
+		// - Keywords ending with '(' (e.g. SLEEP(, BENCHMARK() MUST NOT have a trailing
+		//   \b because '(' is a non-word character and the adjacent \b would require the
+		//   very next character to be a word char, causing SLEEP() and SLEEP( 1) to evade.
 		$keywords = [
 			'GRANT', 'REVOKE',
 			'DROP', 'DELETE', 'TRUNCATE',
@@ -346,10 +385,24 @@ class ODBCQueryRunner {
 			'OPENROWSET', 'OPENDATASOURCE', 'OPENQUERY',
 			'DBCC',
 			'INFORMATION_SCHEMA', 'SYS.',
+			// Time-delay / blind injection attacks.
+			'WAITFOR', 'SLEEP(', 'PG_SLEEP(', 'BENCHMARK(',
+			// DDL that may not be caught by the DML list above.
+			'DECLARE',
+			// Oracle file/network I/O packages.
+			'UTL_FILE', 'UTL_HTTP',
+			// Set operations — listed here (not in charPatterns) so that word-boundary
+			// matching prevents false positives on valid identifiers such as
+			// TRADE_UNION, LABOUR_UNION_ID, REUNION, etc. (KI-024 fix).
+			'UNION',
 		];
 		foreach ( $keywords as $keyword ) {
-			// Use word-boundary regex to avoid false positives.
-			$pattern = '/\b' . preg_quote( $keyword, '/' ) . '/i';
+			// Only add a trailing \b when the keyword ends with a plain alphanumeric
+			// character (a-z, A-Z, 0-9). Keywords ending with '_' or a non-word char
+			// like '(' or '.' use prefix-only or infix matching instead (see above).
+			$lastChar = substr( $keyword, -1 );
+			$trailingBoundary = ctype_alnum( $lastChar ) ? '\b' : '';
+			$pattern = '/\b' . preg_quote( $keyword, '/' ) . $trailingBoundary . '/i';
 			if ( preg_match( $pattern, $clean ) ) {
 				throw new MWException(
 					wfMessage( 'odbc-error-illegal-input', $keyword, $context )->text()
@@ -386,25 +439,61 @@ class ODBCQueryRunner {
 	}
 
 	/**
-	 * Determine whether the ODBC driver uses TOP n syntax (SQL Server / Access)
-	 * rather than the standard LIMIT n syntax.
+	 * Determine the row-limiting SQL syntax required by the ODBC driver.
 	 *
-	 * For DSN-only configs where no driver string is available, we default to
-	 * LIMIT syntax, which is correct for the majority of databases.
+	 * Different database engines use different syntax for capping result-set size:
+	 * - 'limit'  — Standard SQL: appends "LIMIT n" at the end.
+	 *              Used by MySQL, MariaDB, PostgreSQL, SQLite, Oracle 12c+, SAP HANA, etc.
+	 * - 'top'    — Inserts "TOP n" after SELECT: "SELECT TOP n col FROM tbl".
+	 *              Used by SQL Server, MS Access (Jet/ACE), and Sybase ASE.
+	 * - 'first'  — Inserts "FIRST n" after SELECT: "SELECT FIRST n col FROM tbl".
+	 *              Used by Progress OpenEdge (all known ODBC driver name variants).
+	 *
+	 * For DSN-only configurations where no driver name is available the method
+	 * defaults to 'limit', which is correct for the majority of modern databases.
 	 *
 	 * @param array $config The source configuration array.
-	 * @return bool True if the driver uses TOP n; false if it uses LIMIT n.
+	 * @return string One of 'limit', 'top', or 'first'.
 	 */
-	private static function requiresTopSyntax( array $config ): bool {
+	public static function getRowLimitStyle( array $config ): string {
 		$driver = strtolower( $config['driver'] ?? '' );
 		if ( $driver === '' ) {
-			return false; // DSN-only: default to LIMIT
+			return 'limit'; // DSN-only: default to standard LIMIT syntax.
 		}
-		return strpos( $driver, 'sql server' ) !== false
+
+		// SQL Server, MS Access, and Sybase use "SELECT TOP n".
+		if ( strpos( $driver, 'sql server' ) !== false
 			|| strpos( $driver, 'sqlserver' ) !== false
 			|| strpos( $driver, 'access' ) !== false
 			|| strpos( $driver, 'sybase' ) !== false
-			|| strpos( $driver, 'adaptive server' ) !== false;
+			|| strpos( $driver, 'adaptive server' ) !== false ) {
+			return 'top';
+		}
+
+		// Progress OpenEdge uses "SELECT FIRST n".
+		// Covers all known driver name variants:
+		//   "Progress OpenEdge X.X Driver"
+		//   "DataDirect X.X Progress OpenEdge Wire Protocol"
+		if ( strpos( $driver, 'progress' ) !== false
+			|| strpos( $driver, 'openedge' ) !== false ) {
+			return 'first';
+		}
+
+		return 'limit';
+	}
+
+	/**
+	 * Determine whether the ODBC driver uses TOP n syntax (SQL Server / Access / Sybase)
+	 * rather than the standard LIMIT n syntax.
+	 *
+	 * @deprecated since 1.1.0 — Use getRowLimitStyle() which also handles Progress OpenEdge
+	 *   FIRST n syntax. This method returns false for Progress drivers even though they do
+	 *   not use LIMIT either.
+	 * @param array $config The source configuration array.
+	 * @return bool True if the driver uses TOP n; false otherwise.
+	 */
+	public static function requiresTopSyntax( array $config ): bool {
+		return self::getRowLimitStyle( $config ) === 'top';
 	}
 
 	/**
@@ -417,33 +506,46 @@ class ODBCQueryRunner {
 	}
 
 	/**
-	 * Get column names from the last result set or from table metadata.
+	 * Get column metadata from table schema information.
+	 *
+	 * Returns an array of column info arrays, each with keys:
+	 *   'name'     — column name (string)
+	 *   'type'     — SQL type name (string, e.g. 'VARCHAR', 'INT')
+	 *   'size'     — column size/precision (int)
+	 *   'nullable' — 'YES', 'NO', or '' if unknown
 	 *
 	 * @param string $tableName The table name.
-	 * @return array Column name list, or empty array on error (check logs).
+	 * @return array[] Array of column info arrays, or empty on error (check logs).
 	 */
 	public function getTableColumns( string $tableName ): array {
-		set_error_handler( static function ( $errno, $errstr ) {
-			throw new MWException( $errstr );
-		}, E_WARNING );
-
 		try {
-			$columns = odbc_columns( $this->connection, '', '', $tableName );
-			if ( !$columns ) {
-				wfDebugLog( 'odbc', "Failed to get columns for table '$tableName' on source '{$this->sourceId}'" );
-				return [];
-			}
-			$result = [];
-			while ( $row = odbc_fetch_array( $columns ) ) {
-				$result[] = $row['COLUMN_NAME'] ?? $row['column_name'] ?? '';
-			}
-			odbc_free_result( $columns );
-			return array_filter( $result );
+			return ODBCConnectionManager::withOdbcWarnings( function () use ( $tableName ) {
+				$columns = odbc_columns( $this->connection, '', '', $tableName );
+				if ( !$columns ) {
+					wfDebugLog( 'odbc', "Failed to get columns for table '$tableName' on source '{$this->sourceId}'" );
+					return [];
+				}
+				$result = [];
+				while ( $row = odbc_fetch_array( $columns ) ) {
+					// Use a case-insensitive lookup — ODBC drivers return keys in varying cases.
+					$rowLower = array_change_key_case( $row, CASE_LOWER );
+					$name = (string)( $rowLower['column_name'] ?? '' );
+					if ( $name === '' ) {
+						continue;
+					}
+					$result[] = [
+						'name'     => $name,
+						'type'     => (string)( $rowLower['type_name'] ?? '' ),
+						'size'     => (int)( $rowLower['column_size'] ?? 0 ),
+						'nullable' => (string)( $rowLower['is_nullable'] ?? ( isset( $rowLower['nullable'] ) ? ( $rowLower['nullable'] ? 'YES' : 'NO' ) : '' ) ),
+					];
+				}
+				odbc_free_result( $columns );
+				return $result;
+			} );
 		} catch ( MWException $e ) {
 			wfDebugLog( 'odbc', "Exception getting columns for table '$tableName': " . $e->getMessage() );
 			return [];
-		} finally {
-			restore_error_handler();
 		}
 	}
 
@@ -453,30 +555,30 @@ class ODBCQueryRunner {
 	 * @return array Table name list, or empty array on error (check logs).
 	 */
 	public function getTables(): array {
-		set_error_handler( static function ( $errno, $errstr ) {
-			throw new MWException( $errstr );
-		}, E_WARNING );
-
 		try {
-			$tables = odbc_tables( $this->connection );
-			if ( !$tables ) {
-				wfDebugLog( 'odbc', "Failed to get tables on source '{$this->sourceId}'" );
-				return [];
-			}
-			$result = [];
-			while ( $row = odbc_fetch_array( $tables ) ) {
-				$type = $row['TABLE_TYPE'] ?? $row['table_type'] ?? '';
-				if ( $type === 'TABLE' || $type === 'VIEW' ) {
-					$result[] = $row['TABLE_NAME'] ?? $row['table_name'] ?? '';
+			return ODBCConnectionManager::withOdbcWarnings( function () {
+				$tables = odbc_tables( $this->connection );
+				if ( !$tables ) {
+					wfDebugLog( 'odbc', "Failed to get tables on source '{$this->sourceId}'" );
+					return [];
 				}
-			}
-			odbc_free_result( $tables );
-			return array_filter( $result );
+				$result = [];
+				while ( $row = odbc_fetch_array( $tables ) ) {
+					$rowLower = array_change_key_case( $row, CASE_LOWER );
+					$type = (string)( $rowLower['table_type'] ?? '' );
+					if ( $type === 'TABLE' || $type === 'VIEW' ) {
+						$name = (string)( $rowLower['table_name'] ?? '' );
+						if ( $name !== '' ) {
+							$result[] = $name;
+						}
+					}
+				}
+				odbc_free_result( $tables );
+				return $result;
+			} );
 		} catch ( MWException $e ) {
 			wfDebugLog( 'odbc', "Exception getting tables on source '{$this->sourceId}': " . $e->getMessage() );
 			return [];
-		} finally {
-			restore_error_handler();
 		}
 	}
 }

@@ -17,14 +17,13 @@ class ODBCConnectionManager {
 	/** @var array Cache of active ODBC connection resources keyed by source ID. */
 	private static $connections = [];
 
-	/** @var int Maximum number of cached connections. */
-	private const MAX_CONNECTIONS = 10;
+	/** @var array Last-used timestamp (microtime) for each pooled connection, keyed by source ID.
+	 *              Used by the LRU eviction policy to discard the least-recently-used connection
+	 *              when the pool is full, rather than the oldest-opened connection (FIFO). */
+	private static array $lastUsed = [];
 
-	/** @var int SQL_HANDLE_DBC handle type for odbc_setoption() — specifies a connection handle. */
-	private const SQL_HANDLE_DBC = 2;
-
-	/** @var int SQL_ATTR_QUERY_TIMEOUT ODBC connection attribute for query timeout (option 0 = SQL_ATTR_QUERY_TIMEOUT). */
-	private const SQL_ATTR_QUERY_TIMEOUT = 0;
+	/** @var int Fallback maximum number of cached connections (overridden by $wgODBCMaxConnections). */
+	private const MAX_CONNECTIONS_DEFAULT = 10;
 
 	/**
 	 * Get the full configuration array for all ODBC sources.
@@ -55,6 +54,9 @@ class ODBCConnectionManager {
 	 * 2. Driver-based connection string: 'driver' + 'server' + 'database' etc.
 	 * 3. Full connection string: 'connection_string' => 'Driver={...};Server=...;...'
 	 *
+	 * Progress OpenEdge note: use 'host' instead of 'server', and 'db' instead of
+	 * 'database'. Both are accepted and map to the correct ODBC key names (Host= / DB=).
+	 *
 	 * @param array $config The source configuration array.
 	 * @return string The ODBC connection string.
 	 */
@@ -73,34 +75,62 @@ class ODBCConnectionManager {
 		$parts = [];
 
 		if ( !empty( $config['driver'] ) ) {
-			$parts[] = 'Driver={' . $config['driver'] . '}';
+			// Wrap driver name in {} per ODBC spec; double any } inside the value.
+			$parts[] = 'Driver={' . str_replace( '}', '}}', $config['driver'] ) . '}';
 		}
 
-		if ( !empty( $config['server'] ) ) {
-			$parts[] = 'Server=' . $config['server'];
+		// 'server' key → "Server=" (SQL Server, MySQL, PostgreSQL, etc.)
+		// 'host' key   → "Host=" (Progress OpenEdge convention)
+		if ( !empty( $config['host'] ) ) {
+			$parts[] = 'Host=' . self::escapeConnectionStringValue( $config['host'] );
+		} elseif ( !empty( $config['server'] ) ) {
+			$parts[] = 'Server=' . self::escapeConnectionStringValue( $config['server'] );
 		}
 
+		// 'database' key → "Database=" (most drivers)
+		// 'db' key       → "DB=" (Progress OpenEdge convention)
 		if ( !empty( $config['database'] ) ) {
-			$parts[] = 'Database=' . $config['database'];
+			$parts[] = 'Database=' . self::escapeConnectionStringValue( $config['database'] );
+		} elseif ( !empty( $config['db'] ) ) {
+			$parts[] = 'DB=' . self::escapeConnectionStringValue( $config['db'] );
 		}
 
 		if ( !empty( $config['port'] ) ) {
-			$parts[] = 'Port=' . $config['port'];
+			$parts[] = 'Port=' . self::escapeConnectionStringValue( (string)$config['port'] );
 		}
 
 		// Trust server certificate (useful for SQL Server with self-signed certs).
-		if ( !empty( $config['trust_certificate'] ) ) {
+		// Accept both 'trust_certificate' (native config) and
+		// 'trust server certificate' (External Data convention).
+		if ( !empty( $config['trust_certificate'] ) || !empty( $config['trust server certificate'] ) ) {
 			$parts[] = 'TrustServerCertificate=yes';
 		}
 
-		// Any extra DSN parameters.
+		// Any extra DSN parameters — values are escaped to prevent injection.
 		if ( !empty( $config['dsn_params'] ) && is_array( $config['dsn_params'] ) ) {
 			foreach ( $config['dsn_params'] as $key => $value ) {
-				$parts[] = $key . '=' . $value;
+				$parts[] = $key . '=' . self::escapeConnectionStringValue( (string)$value );
 			}
 		}
 
 		return implode( ';', $parts );
+	}
+
+	/**
+	 * Escape a value for safe inclusion in an ODBC connection string attribute.
+	 *
+	 * Per ODBC specification: if a value contains a semicolon, left brace, or right brace
+	 * it must be enclosed in curly braces. Any right brace within the braced value must
+	 * be doubled (}} represents a literal }).
+	 *
+	 * @param string $value The raw attribute value.
+	 * @return string The escaped value, ready for "Key=value" insertion.
+	 */
+	private static function escapeConnectionStringValue( string $value ): string {
+		if ( strpbrk( $value, ';{}' ) !== false ) {
+			return '{' . str_replace( '}', '}}', $value ) . '}';
+		}
+		return $value;
 	}
 
 	/**
@@ -111,30 +141,47 @@ class ODBCConnectionManager {
 	 * @throws MWException If the source is not configured or connection fails.
 	 */
 	public static function connect( string $sourceId ) {
-		// Return cached connection if still valid.
-		if ( isset( self::$connections[$sourceId] ) ) {
-			// Check if connection is still alive.
-			if ( @odbc_error( self::$connections[$sourceId] ) === '' ) {
-				return self::$connections[$sourceId];
-			}
-			// Connection is dead, remove it.
-			unset( self::$connections[$sourceId] );
-		}
-
-		// Enforce connection pool size limit.
-		if ( count( self::$connections ) >= self::MAX_CONNECTIONS ) {
-			// Close the oldest connection.
-			$firstKey = array_key_first( self::$connections );
-			if ( $firstKey !== null ) {
-				self::disconnect( $firstKey );
-			}
-		}
-
+		// Retrieve and validate configuration upfront — before the pool check — so that:
+		// (a) we can pass the driver name to pingConnection() for driver-aware liveness probes,
+		// (b) mis-configured sources surface as a clear message rather than a cryptic ODBC error.
 		$config = self::getSourceConfig( $sourceId );
 		if ( $config === null ) {
 			throw new MWException(
 				wfMessage( 'odbc-error-unknown-source', $sourceId )->text()
 			);
+		}
+		$configErrors = self::validateConfig( $config );
+		if ( !empty( $configErrors ) ) {
+			throw new MWException(
+				wfMessage( 'odbc-error-config-invalid', $sourceId, implode( ', ', $configErrors ) )->text()
+			);
+		}
+
+		// Return cached connection if still alive — use a driver-aware liveness probe
+		// so MS Access gets the correct ping query instead of bare 'SELECT 1' (KI-023 fix).
+		if ( isset( self::$connections[$sourceId] ) ) {
+			if ( self::pingConnection( self::$connections[$sourceId], $config ) ) {
+				// Update last-used timestamp so LRU eviction accounts for recent access.
+				self::$lastUsed[$sourceId] = microtime( true );
+				return self::$connections[$sourceId];
+			}
+			// Connection is dead; discard and open a fresh one.
+			self::disconnect( $sourceId );
+			wfDebugLog( 'odbc', "Stale connection detected for source '$sourceId'; reconnecting." );
+		}
+
+		// Enforce connection pool size limit.
+		$globalConfig = MediaWikiServices::getInstance()->getMainConfig();
+		$maxConns = $globalConfig->get( 'ODBCMaxConnections' );
+		if ( count( self::$connections ) >= $maxConns ) {
+			// Evict the least-recently-used connection (LRU) instead of the oldest-opened
+			// connection (FIFO), so high-traffic sources are retained over idle ones (P2-024).
+			asort( self::$lastUsed );
+			$lruKey = array_key_first( self::$lastUsed );
+			if ( $lruKey !== null ) {
+				wfDebugLog( 'odbc', "Pool full — evicting LRU connection for source '$lruKey'." );
+				self::disconnect( $lruKey );
+			}
 		}
 
 		$dsn = self::buildConnectionString( $config );
@@ -142,23 +189,19 @@ class ODBCConnectionManager {
 		$password = $config['password'] ?? '';
 
 		// Set up error handling: convert warnings to exceptions.
-		set_error_handler( static function ( $errno, $errstr ) {
-			throw new MWException( $errstr );
-		}, E_WARNING );
-
 		try {
 			// Use standard (non-persistent) connections for proper lifecycle management.
 			// Persistent connections (odbc_pconnect) conflict with explicit disconnect()
 			// calls and can cause stale connection issues.
-			$conn = odbc_connect( $dsn, $user, $password );
+			$conn = self::withOdbcWarnings(
+				static fn() => odbc_connect( $dsn, $user, $password )
+			);
 		} catch ( MWException $e ) {
 			// Sanitize error message to avoid exposing credentials.
 			$sanitizedMsg = self::sanitizeErrorMessage( $e->getMessage() );
 			throw new MWException(
 				wfMessage( 'odbc-error-connect-failed', $sourceId, $sanitizedMsg )->text()
 			);
-		} finally {
-			restore_error_handler();
 		}
 
 		if ( !$conn ) {
@@ -168,21 +211,12 @@ class ODBCConnectionManager {
 			);
 		}
 
-		// Apply query timeout if configured.
-		$globalConfig = MediaWikiServices::getInstance()->getMainConfig();
-		$timeout = $config['timeout'] ?? $globalConfig->get( 'ODBCQueryTimeout' );
-		if ( $timeout > 0 ) {
-			// Set SQL_ATTR_QUERY_TIMEOUT on the connection.
-			// This is driver-dependent; not all ODBC drivers support it.
-			$result = @odbc_setoption( $conn, self::SQL_HANDLE_DBC,
-				self::SQL_ATTR_QUERY_TIMEOUT, (int)$timeout );
-			if ( !$result ) {
-				// Log warning but don't fail — timeout is best-effort.
-				wfDebugLog( 'odbc', "Failed to set query timeout for source '$sourceId'. Driver may not support timeouts." );
-			}
-		}
+		// Note: query timeout is applied per-statement in ODBCQueryRunner::executeRawQuery()
+		// using odbc_setoption() on the statement handle (SQL_HANDLE_STMT), which is the
+		// ODBC-standard approach and better-supported by drivers than connection-level setting.
 
 		self::$connections[$sourceId] = $conn;
+		self::$lastUsed[$sourceId] = microtime( true );
 		return $conn;
 	}
 
@@ -194,7 +228,7 @@ class ODBCConnectionManager {
 	public static function disconnect( string $sourceId ): void {
 		if ( isset( self::$connections[$sourceId] ) ) {
 			odbc_close( self::$connections[$sourceId] );
-			unset( self::$connections[$sourceId] );
+			unset( self::$connections[$sourceId], self::$lastUsed[$sourceId] );
 		}
 	}
 
@@ -206,6 +240,7 @@ class ODBCConnectionManager {
 			odbc_close( $conn );
 		}
 		self::$connections = [];
+		self::$lastUsed = [];
 	}
 
 	/**
@@ -229,15 +264,9 @@ class ODBCConnectionManager {
 			$user = $config['user'] ?? '';
 			$password = $config['password'] ?? '';
 
-			set_error_handler( static function ( $errno, $errstr ) {
-				throw new MWException( $errstr );
-			}, E_WARNING );
-
-			try {
-				$testConn = odbc_connect( $dsn, $user, $password );
-			} finally {
-				restore_error_handler();
-			}
+			$testConn = self::withOdbcWarnings(
+				static fn() => odbc_connect( $dsn, $user, $password )
+			);
 
 			if ( !$testConn ) {
 				throw new MWException(
@@ -257,6 +286,48 @@ class ODBCConnectionManager {
 				'success' => false,
 				'message' => $e->getMessage()
 			];
+		}
+	}
+
+	/**
+	 * Verify that a connection handle is alive by executing a minimal probe query.
+	 *
+	 * Checking `odbc_error()` is not a reliable liveness test — it reflects the
+	 * last recorded error, not the current connection state. A proper ping is the
+	 * only way to confirm the connection still works.
+	 *
+	 * The probe query is driver-aware:
+	 * - MS Access (Jet/ACE) does not support bare 'SELECT 1' without a FROM clause;
+	 *   a system table that is always present in Access databases is used instead.
+	 * - All other drivers use the standard 'SELECT 1'.
+	 *
+	 * @param resource|object $conn The ODBC connection handle.
+	 * @param array $config The source configuration array (used to detect the driver).
+	 * @return bool True if the connection is alive.
+	 */
+	private static function pingConnection( $conn, array $config = [] ): bool {
+		$driver = strtolower( $config['driver'] ?? '' );
+
+		// MS Access (Jet/ACE) does not support 'SELECT 1' without a FROM clause.
+		// MSysObjects is an internal system table present in every Access database.
+		if ( strpos( $driver, 'access' ) !== false ) {
+			$probe = 'SELECT 1 FROM MSysObjects WHERE 1=0';
+		} else {
+			$probe = 'SELECT 1';
+		}
+
+		// Use withOdbcWarnings() for consistency with other ODBC calls (P2-046).
+		// Any PHP E_WARNING from the driver is converted to MWException; we catch it
+		// and return false rather than letting the exception propagate.
+		try {
+			$result = self::withOdbcWarnings( static fn() => odbc_exec( $conn, $probe ) );
+			if ( $result !== false ) {
+				odbc_free_result( $result );
+				return true;
+			}
+			return false;
+		} catch ( MWException $e ) {
+			return false;
 		}
 	}
 
@@ -287,12 +358,39 @@ class ODBCConnectionManager {
 			$errors[] = 'dsn, driver, or connection_string';
 		}
 
-		// If using driver mode, server is typically needed.
-		if ( $hasDriver && empty( $config['server'] ) && empty( $config['dsn'] ) ) {
-			$errors[] = 'server (required when using driver mode)';
+		// If using driver mode, a host/server name or a DSN is required.
+		// Progress OpenEdge configs use 'host' (→ Host=) instead of 'server' (→ Server=),
+		// so accept either key (KI-040).
+		if ( $hasDriver && empty( $config['server'] ) && empty( $config['host'] ) && empty( $config['dsn'] ) ) {
+			$errors[] = 'server or host (required when using driver mode)';
 		}
 
 		return $errors;
+	}
+
+	/**
+	 * Execute a callable with PHP E_WARNING errors converted to MWException.
+	 *
+	 * Centralises the repeated set_error_handler / restore_error_handler pattern used
+	 * around ODBC calls that emit PHP warnings on failure (P2-008).
+	 * The original error handler is always restored, even if an exception is thrown.
+	 *
+	 * Public to allow ODBCQueryRunner and EDConnectorOdbcGeneric to share this helper
+	 * instead of duplicating the set_error_handler pattern (P2-051).
+	 *
+	 * @param callable $callback The ODBC call to wrap.
+	 * @return mixed The return value of the callable.
+	 * @throws MWException If the callable triggers an E_WARNING.
+	 */
+	public static function withOdbcWarnings( callable $callback ) {
+		set_error_handler( static function ( int $errno, string $errstr ): bool {
+			throw new MWException( $errstr );
+		}, E_WARNING );
+		try {
+			return $callback();
+		} finally {
+			restore_error_handler();
+		}
 	}
 
 	/**

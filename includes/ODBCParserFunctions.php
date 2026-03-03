@@ -28,6 +28,12 @@ class ODBCParserFunctions {
 	private const PARSER_OUTPUT_KEY = 'ODBCData';
 
 	/**
+	 * Property key used to track the number of {{#odbc_query:}} calls on this page
+	 * render, allowing enforcement of $wgODBCMaxQueriesPerPage (KI-018).
+	 */
+	private const PARSER_OUTPUT_QUERY_COUNT_KEY = 'ODBCQueryCount';
+
+	/**
 	 * Get stored ODBC data for the current parse.
 	 *
 	 * @param Parser $parser
@@ -53,6 +59,28 @@ class ODBCParserFunctions {
 	}
 
 	/**
+	 * Get the number of {{#odbc_query:}} calls already made on this page render.
+	 *
+	 * @param Parser $parser
+	 * @return int
+	 */
+	private static function getQueryCount( Parser $parser ): int {
+		return (int)( $parser->getOutput()->getExtensionData( self::PARSER_OUTPUT_QUERY_COUNT_KEY ) ?? 0 );
+	}
+
+	/**
+	 * Increment the per-page {{#odbc_query:}} call counter.
+	 *
+	 * @param Parser $parser
+	 */
+	private static function incrementQueryCount( Parser $parser ): void {
+		$parser->getOutput()->setExtensionData(
+			self::PARSER_OUTPUT_QUERY_COUNT_KEY,
+			self::getQueryCount( $parser ) + 1
+		);
+	}
+
+	/**
 	 * {{#odbc_query:}} — Retrieve data from an ODBC source.
 	 *
 	 * Usage:
@@ -64,15 +92,31 @@ class ODBCParserFunctions {
 	 * @param Parser $parser The parser object.
 	 * @param PPFrame $frame The frame object.
 	 * @param array $args The arguments (PPNode objects).
-	 * @return array [ text, 'noparse' => true ] for SFH_OBJECT_ARGS.
+	 * @return array [ text, 'noparse' => true, 'isHTML' => true ] for SFH_OBJECT_ARGS.
+ *   Success returns empty string; error returns are pre-rendered HTML spans.
 	 */
 	public static function odbcQuery( Parser $parser, PPFrame $frame, array $args ): array {
 		// Check permission.
 		$user = $parser->getUserIdentity();
 		$permManager = MediaWikiServices::getInstance()->getPermissionManager();
 		if ( !$permManager->userHasRight( $user, 'odbc-query' ) ) {
-			return [ self::formatError( wfMessage( 'odbc-error-permission' )->text() ), 'noparse' => false ];
+			return [ self::formatError( wfMessage( 'odbc-error-permission' )->text() ), 'noparse' => true, 'isHTML' => true ];
 		}
+
+		// Enforce per-page query limit ($wgODBCMaxQueriesPerPage). A limit of 0 means
+		// no cap (default, backward-compatible). This prevents a single page from
+		// issuing an unbounded number of database queries and exhausting server resources
+		// (KI-018).
+		$mainConfig = MediaWikiServices::getInstance()->getMainConfig();
+		$maxQueriesPerPage = (int)$mainConfig->get( 'ODBCMaxQueriesPerPage' );
+		if ( $maxQueriesPerPage > 0 && self::getQueryCount( $parser ) >= $maxQueriesPerPage ) {
+			return [
+				self::formatError( wfMessage( 'odbc-error-too-many-queries', $maxQueriesPerPage )->text() ),
+				'noparse' => true,
+				'isHTML' => true,
+			];
+		}
+		self::incrementQueryCount( $parser );
 
 		// Parse named arguments from PPNode objects.
 		$params = self::parseArgs( $args, $frame );
@@ -80,7 +124,7 @@ class ODBCParserFunctions {
 		// Validate required parameter: source (standardize on 'source' but accept 'db' for compatibility).
 		$sourceId = $params['source'] ?? ( $params[0] ?? '' );
 		if ( $sourceId === '' ) {
-			return [ self::formatError( wfMessage( 'odbc-error-no-source' )->text() ), 'noparse' => false ];
+			return [ self::formatError( wfMessage( 'odbc-error-no-source' )->text() ), 'noparse' => true, 'isHTML' => true ];
 		}
 
 		// Check if suppress error is set.
@@ -121,10 +165,18 @@ class ODBCParserFunctions {
 					if ( $suppressError ) {
 						return [ '', 'noparse' => true ];
 					}
-					return [ self::formatError( wfMessage( 'odbc-error-no-from' )->text() ), 'noparse' => false ];
+					return [ self::formatError( wfMessage( 'odbc-error-no-from' )->text() ), 'noparse' => true, 'isHTML' => true ];
 				}
 
 				$dbColumns = !empty( $columns ) ? $columns : [ '*' => '*' ];
+				if ( empty( $columns ) ) {
+					// KI-008: No data= parameter provided — SELECT * will be issued and ALL columns
+					// returned from the database will be stored in parser variables. This can
+					// unintentionally expose sensitive columns (e.g. passwords, PII) and consume
+					// more memory than necessary. Always specify explicit data= mappings.
+					wfDebugLog( 'odbc', "SELECT * issued for table '$from' on source '$sourceId'" .
+						" — no data= mappings specified in {{#odbc_query:}} (KI-008)." );
+				}
 				$where = $params['where'] ?? '';
 				$orderBy = $params['order by'] ?? $params['order_by'] ?? '';
 				$groupBy = $params['group by'] ?? $params['group_by'] ?? '';
@@ -145,7 +197,7 @@ class ODBCParserFunctions {
 			if ( $suppressError ) {
 				return [ '', 'noparse' => true ];
 			}
-			return [ self::formatError( $e->getMessage() ), 'noparse' => false ];
+			return [ self::formatError( $e->getMessage() ), 'noparse' => true, 'isHTML' => true ];
 		}
 
 		return [ '', 'noparse' => true ];
@@ -163,16 +215,55 @@ class ODBCParserFunctions {
 	 * @param string $default Default value if variable is not set.
 	 * @return string The value.
 	 */
-	public static function odbcValue( Parser $parser, string $varName = '', string $default = '' ): string {
+	/**
+	 * {{#odbc_value:}} — Retrieve a single stored value by variable name.
+	 *
+	 * Usage:
+	 *   {{#odbc_value: varName | default | rowParam }}
+	 *
+	 * @param Parser $parser
+	 * @param string $varName  Variable name set by data= mapping in {{#odbc_query:}}.
+	 * @param string $default  Value returned when varName is absent or row is out of range.
+	 * @param string $rowParam Row selector (KI-019). Accepts:
+	 *                         - omitted / empty / "0" → first row (backward-compatible default)
+	 *                         - positive integer, e.g. "2" → that row (1-indexed)
+	 *                         - "last"                  → final row
+	 *                         - "row=N" / "row=last"    → named-parameter alias
+	 *                         Out-of-range integers silently return $default.
+	 * @return string
+	 */
+	public static function odbcValue( Parser $parser, string $varName = '', string $default = '', string $rowParam = '' ): string {
 		$varName = strtolower( trim( $varName ) );
 		if ( $varName === '' ) {
 			return '';
 		}
 		$storedData = self::getStoredData( $parser );
-		if ( isset( $storedData[$varName] ) && count( $storedData[$varName] ) > 0 ) {
-			return (string)$storedData[$varName][0];
+		$values = $storedData[$varName] ?? [];
+		$count = count( $values );
+		if ( $count === 0 ) {
+			return $default;
 		}
-		return $default;
+
+		// Determine which row to return. Support both positional ("2", "last") and
+		// named ("row=2", "row=last") forms so wikitext reads naturally (KI-019).
+		$rowParam = strtolower( trim( $rowParam ) );
+		if ( substr( $rowParam, 0, 4 ) === 'row=' ) {
+			$rowParam = substr( $rowParam, 4 );
+		}
+
+		if ( $rowParam === 'last' ) {
+			$index = $count - 1;
+		} elseif ( $rowParam === '' || $rowParam === '0' ) {
+			$index = 0; // Default: first row (unchanged behaviour)
+		} else {
+			$n = (int)$rowParam;
+			if ( $n < 1 || $n > $count ) {
+				return $default; // Out-of-range → silent fallback (KI-019)
+			}
+			$index = $n - 1;
+		}
+
+		return (string)( $values[$index] ?? $default );
 	}
 
 	/**
@@ -313,26 +404,25 @@ class ODBCParserFunctions {
 	 */
 	private static function mergeResults( array &$storedData, array $rows, array $mappings ): void {
 		foreach ( $rows as $row ) {
+			// Build a case-insensitive lookup map for this row once (O(cols) per row).
+			// This avoids the O(cols) inner scan per mapping that the previous code used.
+			$rowLower = [];
+			foreach ( $row as $key => $val ) {
+				$rowLower[ strtolower( $key ) ] = $val;
+			}
+
 			if ( !empty( $mappings ) ) {
 				foreach ( $mappings as $localVar => $dbCol ) {
 					$localVar = strtolower( $localVar );
 					if ( !isset( $storedData[$localVar] ) ) {
 						$storedData[$localVar] = [];
 					}
-					// Try case-insensitive column match.
-					$value = '';
-					foreach ( $row as $key => $val ) {
-						if ( strcasecmp( $key, $dbCol ) === 0 ) {
-							$value = $val ?? '';
-							break;
-						}
-					}
+					$value = $rowLower[ strtolower( $dbCol ) ] ?? '';
 					$storedData[$localVar][] = (string)$value;
 				}
 			} else {
-				// No explicit mapping — store all columns with lowercase names.
-				foreach ( $row as $col => $value ) {
-					$varName = strtolower( $col );
+				// No explicit mapping — store all columns using their lowercase names.
+				foreach ( $rowLower as $varName => $value ) {
 					if ( !isset( $storedData[$varName] ) ) {
 						$storedData[$varName] = [];
 					}

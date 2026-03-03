@@ -62,11 +62,11 @@ class ODBCHooks {
 	private static function registerExternalDataConnector(): void {
 		// At registration time, MainConfig is not available yet and
 		// extension.json defaults have not been merged into globals.
-		// We check the global: if the user has explicitly set it to false
-		// in LocalSettings.php (before wfLoadExtension), respect that.
+		// We check the global: if the user has explicitly set it to a falsy value
+		// (false, 0, '', null) in LocalSettings.php, respect that and skip registration.
 		// Otherwise, default to enabled (matching extension.json default).
 		global $wgODBCExternalDataIntegration;
-		if ( $wgODBCExternalDataIntegration === false ) {
+		if ( !$wgODBCExternalDataIntegration ) {
 			return;
 		}
 

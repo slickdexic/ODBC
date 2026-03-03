@@ -11,11 +11,14 @@ $magicWords = [];
 
 /**
  * English (en)
+ *
+ * The first element (0) means case-insensitive: {{#odbc_query:}}, {{#ODBC_QUERY:}},
+ * and {{#Odbc_Query:}} all resolve to the same parser function.
  */
 $magicWords['en'] = [
-	'odbc_query'         => [ 1, 'odbc_query' ],
-	'odbc_value'         => [ 1, 'odbc_value' ],
-	'for_odbc_table'     => [ 1, 'for_odbc_table' ],
-	'display_odbc_table' => [ 1, 'display_odbc_table' ],
-	'odbc_clear'         => [ 1, 'odbc_clear' ],
+	'odbc_query'         => [ 0, 'odbc_query' ],
+	'odbc_value'         => [ 0, 'odbc_value' ],
+	'for_odbc_table'     => [ 0, 'for_odbc_table' ],
+	'display_odbc_table' => [ 0, 'display_odbc_table' ],
+	'odbc_clear'         => [ 0, 'odbc_clear' ],
 ];

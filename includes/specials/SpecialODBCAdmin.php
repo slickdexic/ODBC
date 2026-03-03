@@ -18,6 +18,9 @@ use MediaWiki\Html\Html;
 
 class SpecialODBCAdmin extends SpecialPage {
 
+	/** Maximum rows returned by a test query from the admin interface. */
+	private const ADMIN_QUERY_MAX_ROWS = 100;
+
 	public function __construct() {
 		parent::__construct( 'ODBCAdmin', 'odbc-admin' );
 	}
@@ -116,8 +119,10 @@ class SpecialODBCAdmin extends SpecialPage {
 			$html .= Html::openElement( 'tr' );
 			$html .= Html::rawElement( 'td', [], Html::element( 'strong', [], $id ) );
 			$html .= Html::element( 'td', [], $config['driver'] ?? $config['dsn'] ?? 'N/A' );
-			$html .= Html::element( 'td', [], $config['server'] ?? 'N/A' );
-			$html .= Html::element( 'td', [], $config['database'] ?? $config['name'] ?? 'N/A' );
+			// Progress OpenEdge uses 'host' instead of 'server', and 'db' instead of 'database'.
+			// Fall back through all known key variants so the admin table is never blank.
+			$html .= Html::element( 'td', [], $config['server'] ?? $config['host'] ?? 'N/A' );
+			$html .= Html::element( 'td', [], $config['database'] ?? $config['db'] ?? $config['name'] ?? 'N/A' );
 			$html .= Html::rawElement( 'td', [], $actions );
 			$html .= Html::closeElement( 'tr' );
 		}
@@ -209,13 +214,25 @@ class SpecialODBCAdmin extends SpecialPage {
 			if ( empty( $columns ) ) {
 				$out->addWikiMsg( 'odbc-admin-no-columns' );
 			} else {
-				$html = Html::openElement( 'table', [ 'class' => 'wikitable' ] );
+				$html = Html::openElement( 'table', [ 'class' => 'wikitable sortable' ] );
 				$html .= Html::openElement( 'tr' );
 				$html .= Html::element( 'th', [], $this->msg( 'odbc-admin-col-name' )->text() );
+				$html .= Html::element( 'th', [], $this->msg( 'odbc-admin-col-type' )->text() );
+				$html .= Html::element( 'th', [], $this->msg( 'odbc-admin-col-size' )->text() );
+				$html .= Html::element( 'th', [], $this->msg( 'odbc-admin-col-nullable' )->text() );
 				$html .= Html::closeElement( 'tr' );
 				foreach ( $columns as $col ) {
 					$html .= Html::openElement( 'tr' );
-					$html .= Html::element( 'td', [], $col );
+					$html .= Html::rawElement( 'td', [],
+						Html::element( 'strong', [], $col['name'] )
+					);
+					$html .= Html::element( 'td', [], $col['type'] );
+					$html .= Html::element(
+						'td',
+						[ 'style' => 'text-align:right' ],
+						$col['size'] > 0 ? (string)$col['size'] : ''
+					);
+					$html .= Html::element( 'td', [], $col['nullable'] );
 					$html .= Html::closeElement( 'tr' );
 				}
 				$html .= Html::closeElement( 'table' );
@@ -300,7 +317,7 @@ class SpecialODBCAdmin extends SpecialPage {
 		try {
 			$runner = new ODBCQueryRunner( $sourceId );
 			$config = MediaWikiServices::getInstance()->getMainConfig();
-			$maxRows = min( 100, $config->get( 'ODBCMaxRows' ) ); // Cap test queries at 100 rows.
+			$maxRows = min( self::ADMIN_QUERY_MAX_ROWS, $config->get( 'ODBCMaxRows' ) ); // Cap test queries.
 			$rows = $runner->executeRawQuery( $sql, [], $maxRows );
 
 			// Show the executed SQL (text-escaped) and row count.
