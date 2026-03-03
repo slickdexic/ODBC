@@ -281,9 +281,10 @@ The sanitization approach provides a useful layer of defence but should never be
 
 ---
 
-### 2.2 Admin Interface Runs Arbitrary SELECT Without Checking `$wgODBCAllowArbitraryQueries`
+### 2.2 Admin Interface Runs Arbitrary SELECT Without Checking `$wgODBCAllowArbitraryQueries` ✅ Fixed in v1.3.0 (P2-054)
 
-**File:** `includes/specials/SpecialODBCAdmin.php`, `runTestQuery()`
+**File:** `includes/specials/SpecialODBCAdmin.php`, `runTestQuery()`  
+**Status:** ✅ Fixed in v1.3.0 — `runTestQuery()` now checks `ODBCAllowArbitraryQueries` (global) and `allow_queries` (per-source) before executing, consistent with `executeComposed()`.
 
 ```php
 $runner = new ODBCQueryRunner( $sourceId );
@@ -371,24 +372,14 @@ The two code paths provide fundamentally different quality-of-service. Using the
 
 ---
 
-### 3.5 Connection Pool Eviction Is FIFO, Not LRU ✦ NEW
+### 3.5 Connection Pool Eviction Is FIFO, Not LRU ✅ Fixed in v1.1.0 (P2-024)
 
 **File:** `includes/ODBCConnectionManager.php`, `connect()`
+**Status:** ✅ Fixed in v1.1.0 (P2-024) — `$lastUsed` array tracks last-access timestamp per source; `asort()` + `array_key_first()` now evicts the least-recently-used connection.
 
-When the connection pool reaches the `$wgODBCMaxConnections` limit, the eviction logic is:
+The original eviction used `array_key_first( self::$connections )` — FIFO order (oldest-opened first). After P2-024, a `private static array $lastUsed` property records the `microtime(true)` timestamp of the most-recent use for each source. On pool overflow, `asort($lastUsed)` puts the least-recently-used source first and `array_key_first()` selects it for eviction. Active, frequently-used connections are retained; idle connections are evicted.
 
-```php
-$firstKey = array_key_first( self::$connections );
-if ( $firstKey !== null ) {
-    self::disconnect( $firstKey );
-}
-```
-
-`array_key_first()` returns the **first key by insertion order** — First In, First Out (FIFO). This is an incorrect eviction policy for a connection pool. The oldest connection is not necessarily the least recently used. If the first connection added to the pool serves the most-queried data source, it will be repeatedly evicted to make room for new connections, while newer less-used connections are kept. Proper pool eviction should track last-access timestamps and use Least Recently Used (LRU) order.
-
-**Impact:** Active, frequently-used connections are evicted, causing unnecessary reconnection overhead for popular sources.
-
-**Fix:** Record the last-used timestamp for each connection alongside the connection handle. Evict the connection with the oldest last-use timestamp.
+~~**Fix:** Record the last-used timestamp for each connection alongside the connection handle. Evict the connection with the oldest last-use timestamp.~~ Applied in v1.1.0.
 
 ---
 
@@ -406,25 +397,23 @@ All PHP classes (`ODBCConnectionManager`, `ODBCQueryRunner`, `ODBCParserFunction
 
 ---
 
-### 3.7 `extension.json` `callback` Key Is Deprecated in Modern MediaWiki ✦ NEW
+### 3.7 `extension.json` `callback` Key Is Deprecated in Modern MediaWiki ✅ Fixed in v1.3.0 (P2-054)
 
-**File:** `extension.json`
+**File:** `extension.json`  
+**Status:** ✅ Fixed in v1.3.0 — `"callback"` removed; `"ExtensionRegistration": "ODBCHooks::onRegistration"` added to the `"Hooks"` section.
 
-```json
-"callback": "ODBCHooks::onRegistration"
-```
+The `callback` key in `extension.json` was the early mechanism for running one-time setup code at extension load time. It is deprecated in modern MediaWiki releases in favor of using the `ExtensionRegistration` hook. The hook registration is functionally equivalent; `onRegistration()` is called at the same point in the extension loading lifecycle.
 
-The `callback` key in `extension.json` was the early mechanism for running one-time setup code at extension load time. It is deprecated in modern MediaWiki releases in favor of using the `ExtensionRegistration` hook or `onRegistration` static method pattern through the hooks system. While still functional in MW 1.39+, it will eventually be removed.
-
-**Fix:** Register setup logic using the proper `ExtensionRegistration` hook or move the External Data connector registration to `onParserFirstCallInit` with an appropriate guard.
+~~**Fix:** Register setup logic using the proper `ExtensionRegistration` hook.~~ Applied in v1.3.0.
 
 ---
 
-### 3.8 `getMainConfig()` Called Repeatedly Inside Hot Methods
+### 3.8 `getMainConfig()` Called Repeatedly Inside Hot Methods ✅ Fixed in v1.3.0 (P2-055)
 
-**Files:** `includes/ODBCQueryRunner.php`
+**Files:** `includes/ODBCQueryRunner.php`  
+**Status:** ✅ Fixed in v1.3.0 — `private $mainConfig` property added; set once in the constructor via `MediaWikiServices::getInstance()->getMainConfig()`; all three method-level calls replaced with `$this->mainConfig`.
 
-`MediaWikiServices::getInstance()->getMainConfig()` is called inside `executeRawQuery()`, `executeComposed()`, and `executePrepared()` — all of which may be called multiple times per page parse. While `MediaWikiServices::getInstance()` is cheap (it returns a singleton), redundantly fetching individual config values on every call of a hot path is wasteful. These values should be cached in the constructor or in private properties.
+`MediaWikiServices::getInstance()->getMainConfig()` was called independently in `executeComposed()`, `executePrepared()`, and `executeRawQuery()`. Each call goes through the service locator. Caching the result in the constructor eliminates the redundant lookups.
 
 ---
 
@@ -880,9 +869,10 @@ Some log messages use `—` (em dash) as a separator, others use `:`. Log format
 
 ---
 
-### 5.5 `Html::textarea()` Uses Deprecated `cols` Attribute
+### 5.5 `Html::textarea()` Uses Deprecated `cols` Attribute ✅ Fixed in v1.3.0 (P2-058)
 
-**File:** `includes/specials/SpecialODBCAdmin.php`
+**File:** `includes/specials/SpecialODBCAdmin.php`  
+**Status:** ✅ Fixed in v1.3.0 — `'cols' => 80` removed; replaced with `'style' => 'width: 100%; max-width: 60em; box-sizing: border-box;'`.
 
 ```php
 $html .= Html::textarea( 'sql', '', [
@@ -894,9 +884,10 @@ $html .= Html::textarea( 'sql', '', [
 
 ---
 
-### 5.6 Silent Truncation of `data=` Mappings Exceeding 256 Characters ✦ NEW
+### 5.6 Silent Truncation of `data=` Mappings Exceeding 256 Characters ✅ Fixed in v1.3.0 (P2-057)
 
-**File:** `includes/ODBCParserFunctions.php`, `parseDataMappings()`
+**File:** `includes/ODBCParserFunctions.php`, `parseDataMappings()`  
+**Status:** ✅ Fixed in v1.3.0 — `wfDebugLog('odbc', ...)` entry added when a pair is dropped; includes pair length and first 80 characters.
 
 ```php
 if ( strlen( $pair ) > 256 ) {
@@ -927,15 +918,15 @@ The `@` suppression operator hides any PHP warning. The `@` is still used to pre
 
 ## 6. Missing Features / Incomplete Implementations
 
-### 6.1 No Rate Limiting on `{{#odbc_query:}}`
+### 6.1 No Rate Limiting on `{{#odbc_query:}}` ✅ Fixed in v1.1.0 (`$wgODBCMaxQueriesPerPage` / P2-032)
 
-A page with many template inclusions could trigger dozens or hundreds of ODBC queries per page view. There is no per-page or per-request limit on the number of queries that can execute. This can be weaponized for database denial-of-service.
+A page with many template inclusions could trigger dozens or hundreds of ODBC queries per page view. **Fixed in v1.1.0:** `$wgODBCMaxQueriesPerPage` (default `0` = unlimited) caps the number of `{{#odbc_query:}}` calls per page render. Returns an i18n error when exceeded.
 
 ---
 
-### 6.2 No Mechanism to Access Specific Row Values from `{{#odbc_value:}}`
+### 6.2 No Mechanism to Access Specific Row Values from `{{#odbc_value:}}` ✅ Fixed in v1.2.0 (KI-019 / P2-019)
 
-`{{#odbc_value:varName}}` always returns the first row. There is no `{{#odbc_value:varName|row=3}}` or equivalent. This is a genuine functional limitation for use cases where single-row access to non-first rows is needed without using a loop.
+`{{#odbc_value:varName}}` always returns the first row. **Fixed in v1.2.0:** An optional third positional parameter (or `row=N` named form) selects a specific row. `row=last` returns the final row. Out-of-range indices silently fall back to the default value.
 
 ---
 
@@ -945,9 +936,9 @@ A page with many template inclusions could trigger dozens or hundreds of ODBC qu
 
 ---
 
-### 6.4 `EDConnectorOdbcGeneric` Does Not Apply `$wgODBCCacheExpiry` or UTF-8 Conversion
+### 6.4 `EDConnectorOdbcGeneric` Does Not Apply `$wgODBCCacheExpiry` or UTF-8 Conversion ✅ Fixed in v1.1.0 (P2-016)
 
-Result caching and automatic UTF-8 encoding conversion are absent from the ED connector code path. Queries via External Data always hit the database and may return results in non-UTF-8 encodings. This creates an inconsistency between the two code paths for the same ODBC source.
+Result caching and automatic UTF-8 encoding conversion are absent from the ED connector code path. **Fixed in v1.1.0 (P2-016):** `EDConnectorOdbcGeneric::fetch()` now delegates to `ODBCQueryRunner::executeRawQuery()` when in `odbc_source` mode, inheriting result caching and UTF-8 conversion. Standalone External Data mode still lacks caching/conversion (KI-020 partially open).
 
 ---
 
@@ -959,11 +950,10 @@ There is no `require-dev` section defining PHPUnit, MediaWiki's test utilities, 
 
 ---
 
-### 6.6 No Slow Query Logging ✦ NEW
+### 6.6 No Slow Query Logging ✅ Fixed in v1.2.0 (`$wgODBCSlowQueryThreshold` / P2-053)
 
-**File:** `includes/ODBCQueryRunner.php`, `executeRawQuery()`
-
-There is no timing or slow query log. All executed queries are logged at the debug level with SQL and row count, but execution time is not recorded. For performance monitoring, it would be valuable to log queries that exceed a configurable threshold (e.g., > 5 seconds). Without slow query logging, performance problems in production are difficult to identify from logs alone.
+**File:** `includes/ODBCQueryRunner.php`, `executeRawQuery()`  
+**Status:** ✅ Fixed in v1.2.0 — Query elapsed time (execute + fetch) is now appended to every `odbc` debug log entry. When `$wgODBCSlowQueryThreshold > 0`, queries exceeding the threshold are additionally logged to the `odbc-slow` channel.
 
 ---
 

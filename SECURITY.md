@@ -155,6 +155,11 @@ If you discover a security vulnerability in this extension, please report it by 
 
 ## Security Release History
 
+### Version 1.3.0 (2026-03-03)
+- `Special:ODBCAdmin` test-query form now respects `$wgODBCAllowArbitraryQueries` and per-source `allow_queries` flag, consistent with `executeComposed()` (§2.2 fix, P2-056)
+- `extension.json` `callback` key replaced with `ExtensionRegistration` hook (deprecation removal, P2-054)
+- `$mainConfig` cached in `ODBCQueryRunner` constructor; oversized `data=` mapping pairs now logged instead of silently dropped
+
 ### Version 1.2.0 (2026-03-03)
 - Error message HTML now correctly flagged as `isHTML` — prevents edge-case re-parsing of error spans as wikitext (§5.2 fix)
 - Query execution timing added to `odbc` debug log; slow-query logging added via `odbc-slow` channel (controlled by new `$wgODBCSlowQueryThreshold` config key)

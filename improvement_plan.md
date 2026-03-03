@@ -999,6 +999,61 @@ Before this change, query execution time was invisible to operators. Slow querie
 - Appends `— Returned N rows in X.XXXs` to every `wfDebugLog('odbc', ...)` query entry.
 - Routes an additional `wfDebugLog('odbc-slow', ...)` entry when `$elapsed > $wgODBCSlowQueryThreshold > 0`.
 
+---
+
+### P2-054 — Replace `extension.json` `callback` with `ExtensionRegistration` Hook (§3.7) ✦ NEW (2026-03-03)
+
+**Priority:** LOW (forward-compatibility)  
+**Effort:** Trivial  
+**Files:** `extension.json`, `includes/ODBCHooks.php`  
+**Status:** ✅ Done (v1.3.0) — `"callback"` removed; `"ExtensionRegistration": "ODBCHooks::onRegistration"` added under `"Hooks"`. Docblock in `ODBCHooks.php` updated.
+
+The `callback` key in `extension.json` is the pre-MW1.25 mechanism for one-time setup. The modern equivalent is to register the same method under the `ExtensionRegistration` hook in the `"Hooks"` section, which is called at the same point in the extension loading lifecycle.
+
+---
+
+### P2-055 — Cache `$mainConfig` in `ODBCQueryRunner` Constructor (§3.8) ✦ NEW (2026-03-03)
+
+**Priority:** LOW (performance / DRY)  
+**Effort:** Trivial  
+**Files:** `includes/ODBCQueryRunner.php`  
+**Status:** ✅ Done (v1.3.0) — `private $mainConfig` property added; set once in constructor; used in `executeComposed()`, `executePrepared()`, and `executeRawQuery()` instead of three independent service-locator calls.
+
+Each of the three execute methods called `MediaWikiServices::getInstance()->getMainConfig()` independently. While cheap, these are redundant calls on hot paths. Caching in the constructor eliminates the three repeated lookups.
+
+---
+
+### P2-056 — Enforce `$wgODBCAllowArbitraryQueries` in `runTestQuery()` (§2.2) ✦ NEW (2026-03-03)
+
+**Priority:** MEDIUM (security / consistency)  
+**Effort:** Trivial  
+**Files:** `includes/specials/SpecialODBCAdmin.php`  
+**Status:** ✅ Done (v1.3.0) — Check added before `executeRawQuery()` call; consistent with `executeComposed()` policy.
+
+`runTestQuery()` previously called `executeRawQuery()` directly, bypassing the arbitrary-query gate in `executeComposed()`. Operators who set `$wgODBCAllowArbitraryQueries = false` could still run ad-hoc SQL via Special:ODBCAdmin. The fix adds the same global + per-source `allow_queries` check, returning an error box if both are disabled.
+
+---
+
+### P2-057 — Log Dropped `data=` Mapping Pairs in `parseDataMappings()` (§5.6) ✦ NEW (2026-03-03)
+
+**Priority:** LOW (diagnostics)  
+**Effort:** Trivial  
+**Files:** `includes/ODBCParserFunctions.php`  
+**Status:** ✅ Done (v1.3.0) — `wfDebugLog('odbc', ...)` entry added for each oversized pair that is dropped.
+
+Mapping pairs longer than 256 characters were silently skipped. Template authors had no way to know their `data=` parameter was partially ignored. The log entry includes pair length and the first 80 characters of the pair for easy identification.
+
+---
+
+### P2-058 — Remove Deprecated `cols` Attribute from Admin SQL Textarea (§5.5) ✦ NEW (2026-03-03)
+
+**Priority:** LOW (HTML5 compliance)  
+**Effort:** Trivial  
+**Files:** `includes/specials/SpecialODBCAdmin.php`  
+**Status:** ✅ Done (v1.3.0) — `'cols' => 80` removed; `'style' => 'width: 100%; max-width: 60em; box-sizing: border-box;'` added.
+
+`cols` is a deprecated presentation attribute in HTML5. Width should be controlled via CSS.
+
  (not necessarily at the wiki-user level) and require careful planning. They align the extension with MediaWiki 1.42+ and PHP 8.x best practices.
 
 ---
@@ -1208,6 +1263,11 @@ The following documentation improvements should be addressed in the next release
 | P2-051 Make withOdbcWarnings() public; replace 5 raw closures | v1.2.0 | ✅ Done (v1.2.0) | LOW | Small | DRY / P2-008 completion |
 | P2-052 Fix noparse/isHTML on odbcQuery() error returns (§5.2) | v1.2.0 | ✅ Done (v1.2.0) | MEDIUM | Trivial | Parser correctness |
 | P2-053 Query timing + ODBCSlowQueryThreshold slow-query log | v1.2.0 | ✅ Done (v1.2.0) | MEDIUM | Small | Observability |
+| P2-054 Replace callback with ExtensionRegistration hook (§3.7) | v1.3.0 | ✅ Done (v1.3.0) | LOW | Trivial | Forward-compat / deprecation removal |
+| P2-055 Cache $mainConfig in ODBCQueryRunner constructor (§3.8) | v1.3.0 | ✅ Done (v1.3.0) | LOW | Trivial | Performance / DRY |
+| P2-056 Enforce AllowArbitraryQueries in admin runTestQuery (§2.2) | v1.3.0 | ✅ Done (v1.3.0) | MEDIUM | Trivial | Security / consistency |
+| P2-057 Log dropped data= mapping pairs (§5.6) | v1.3.0 | ✅ Done (v1.3.0) | LOW | Trivial | Diagnostics |
+| P2-058 Remove deprecated cols attr from admin textarea (§5.5) | v1.3.0 | ✅ Done (v1.3.0) | LOW | Trivial | HTML5 compliance |
 | P3-001 Service container | v2.0.0 | Open | HIGH | Large | Architecture |
 | P3-002 Interfaces | v2.0.0 | Open | MEDIUM | Moderate | Testability |
 | P3-003 Unit test suite | v2.0.0 | Open | HIGH | Large | Quality assurance |

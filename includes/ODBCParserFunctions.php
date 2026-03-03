@@ -496,8 +496,12 @@ class ODBCParserFunctions {
 			if ( $pair === '' ) {
 				continue;
 			}
-			// Limit individual mapping length to prevent abuse.
+			// Limit individual mapping length to prevent abuse. Log when a mapping is dropped
+			// so editors can diagnose unexplained missing variables (§5.6).
 			if ( strlen( $pair ) > 256 ) {
+				wfDebugLog( 'odbc', 'parseDataMappings: dropping oversized mapping pair (' .
+					strlen( $pair ) . ' chars > 256 limit) in data= parameter; check your template: \'' .
+					substr( $pair, 0, 80 ) . '\'' );
 				continue;
 			}
 			$eqPos = strpos( $pair, '=' );

@@ -5,7 +5,22 @@ All notable changes to the MediaWiki ODBC Extension will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — v1.2.0
+## [Unreleased] — v1.3.0
+
+### Fixed
+
+- **§2.2 — `Special:ODBCAdmin` run-query now respects `$wgODBCAllowArbitraryQueries`** — `runTestQuery()` previously called `executeRawQuery()` directly, bypassing the arbitrary-query policy enforced by `executeComposed()`. Operators who set `$wgODBCAllowArbitraryQueries = false` expecting all ad-hoc SQL to be blocked found that admins could still run test queries. The admin page now checks the same global + per-source `allow_queries` flags as the parser function path and shows an error if both are disabled (P2-054).
+- **§5.6 — Silent `data=` mapping truncation now logs a diagnostic** — Individual `data=` mapping pairs longer than 256 characters were silently dropped in `parseDataMappings()` with no indication to the template author. The variables simply would not be populated, producing confusing empty output. A `wfDebugLog('odbc', ...)` entry is now written for each skipped pair so operators can identify malformed templates (P2-057).
+- **§5.5 — Deprecated `cols` attribute removed from admin textarea** — `SpecialODBCAdmin::showQueryForm()` set `cols="80"` on the SQL textarea, a deprecated HTML5 presentation attribute. Replaced with an inline CSS `width: 100%; max-width: 60em;` rule (P2-058).
+
+### Improved
+
+- **§3.7 — `extension.json` `callback` key replaced with `ExtensionRegistration` hook** — The legacy `callback` key was the pre-MW1.25 mechanism for one-time setup. `extension.json` now registers `ODBCHooks::onRegistration` under the `ExtensionRegistration` hook instead. Functionally equivalent; removes the deprecation (P2-054).
+- **§3.8 — `getMainConfig()` cached in `ODBCQueryRunner` constructor** — `MediaWikiServices::getInstance()->getMainConfig()` was called independently in `executeComposed()`, `executePrepared()`, and `executeRawQuery()` on every invocation. A single `$this->mainConfig` private property is now set once in the constructor and reused across all three methods, reducing repeated service-locator calls on hot paths (P2-055).
+
+---
+
+## [1.2.0] - 2026-03-03
 
 ### Added
 

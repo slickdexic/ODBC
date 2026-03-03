@@ -29,6 +29,10 @@ class ODBCQueryRunner {
 	/** @var array The source configuration. */
 	private $config;
 
+	/** @var \Config Cached main config instance. Fetched once in the constructor to avoid
+	 *              repeated MediaWikiServices::getInstance()->getMainConfig() calls in hot paths. */
+	private $mainConfig;
+
 	/** @var resource|object The ODBC connection. */
 	private $connection;
 
@@ -37,6 +41,7 @@ class ODBCQueryRunner {
 	 * @throws MWException If connection fails.
 	 */
 	public function __construct( string $sourceId ) {
+		$this->mainConfig = MediaWikiServices::getInstance()->getMainConfig();
 		$this->sourceId = $sourceId;
 		$this->config = ODBCConnectionManager::getSourceConfig( $sourceId );
 		if ( $this->config === null ) {
@@ -70,7 +75,7 @@ class ODBCQueryRunner {
 		int $limit = 0
 	): array {
 		// Check if arbitrary queries are allowed.
-		$mainConfig = MediaWikiServices::getInstance()->getMainConfig();
+		$mainConfig = $this->mainConfig;
 		$allowArbitrary = $mainConfig->get( 'ODBCAllowArbitraryQueries' );
 
 		if ( !$allowArbitrary && empty( $this->config['allow_queries'] ) ) {
@@ -181,7 +186,7 @@ class ODBCQueryRunner {
 			);
 		}
 
-		$mainConfig = MediaWikiServices::getInstance()->getMainConfig();
+		$mainConfig = $this->mainConfig;
 		$maxRows = $mainConfig->get( 'ODBCMaxRows' );
 
 		return $this->executeRawQuery( $sql, $parameters, $maxRows );
@@ -198,7 +203,7 @@ class ODBCQueryRunner {
 	 */
 	public function executeRawQuery( string $sql, array $params = [], int $maxRows = 1000 ): array {
 		// Check cache first if caching is enabled.
-		$mainConfig = MediaWikiServices::getInstance()->getMainConfig();
+		$mainConfig = $this->mainConfig;
 		$cacheExpiry = $mainConfig->get( 'ODBCCacheExpiry' );
 		$cache = null;
 		$cacheKey = null;

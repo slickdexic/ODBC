@@ -264,7 +264,7 @@ class SpecialODBCAdmin extends SpecialPage {
 		$html .= Html::element( 'p', [], $this->msg( 'odbc-admin-query-intro' )->text() );
 		$html .= Html::textarea( 'sql', '', [
 			'rows'        => 6,
-			'cols'        => 80,
+			'style'       => 'width: 100%; max-width: 60em; box-sizing: border-box;',
 			'placeholder' => 'SELECT * FROM tableName LIMIT 10'
 		] );
 		$html .= Html::element( 'br' );
@@ -314,9 +314,23 @@ class SpecialODBCAdmin extends SpecialPage {
 			return;
 		}
 
+		// Respect $wgODBCAllowArbitraryQueries: the odbc-admin permission grants access to this page
+		// but does NOT override the arbitrary-query policy. If both the global flag and the
+		// per-source allow_queries flag are disabled, the test query is blocked — keeping admin
+		// interface behaviour consistent with ODBCQueryRunner::executeComposed() (§2.2).
+		$arbitraryConfig = MediaWikiServices::getInstance()->getMainConfig();
+		$sourceConf = ODBCConnectionManager::getSourceConfig( $sourceId );
+		if ( !$arbitraryConfig->get( 'ODBCAllowArbitraryQueries' ) && empty( $sourceConf['allow_queries'] ) ) {
+			$out->addHTML( Html::errorBox(
+				$this->msg( 'odbc-error-arbitrary-not-allowed' )->escaped()
+			) );
+			$this->addBackLink();
+			return;
+		}
+
 		try {
 			$runner = new ODBCQueryRunner( $sourceId );
-			$config = MediaWikiServices::getInstance()->getMainConfig();
+			$config = $arbitraryConfig;
 			$maxRows = min( self::ADMIN_QUERY_MAX_ROWS, $config->get( 'ODBCMaxRows' ) ); // Cap test queries.
 			$rows = $runner->executeRawQuery( $sql, [], $maxRows );
 

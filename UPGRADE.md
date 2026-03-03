@@ -1,5 +1,33 @@
 # Upgrade Guide
 
+## Upgrading to 1.3.0 from 1.2.0
+
+Version 1.3.0 is a quality and security-consistency release. All users are recommended to upgrade.
+
+### Breaking Changes
+
+**None.** Version 1.3.0 is fully backward compatible with 1.2.0.
+
+### Security: `Special:ODBCAdmin` Now Respects `$wgODBCAllowArbitraryQueries`
+
+In previous versions, administrators could run test queries from Special:ODBCAdmin even when `$wgODBCAllowArbitraryQueries = false`. The admin interface now consistently enforces the same arbitrary-query policy as the parser functions. If you have operators who need to run test queries via the admin page, ensure either `$wgODBCAllowArbitraryQueries = true` or that the relevant ODBC source has `'allow_queries' => true` in `$wgODBCSources`.
+
+### Internal Improvements
+
+- **`extension.json` `callback` replaced with `ExtensionRegistration` hook** — Removes a deprecated manifest key. No visible change for operators.
+- **`$mainConfig` cached in `ODBCQueryRunner`** — Minor performance improvement for pages with multiple `{{#odbc_query:}}` calls.
+- **`data=` dropped-pair logging** — Oversized `data=` mapping pairs now emit a `wfDebugLog('odbc', ...)` entry instead of silently disappearing.
+- **Admin SQL textarea width changed to CSS** — `cols="80"` replaced with `style="width: 100%"` for proper responsive layout.
+
+### Upgrade Steps
+
+1. Replace all files in `extensions/ODBC/` with the new version (or `git pull`).
+2. Clear the PHP opcode cache (restart PHP-FPM or Apache) and any object/parser caches.
+3. If using `$wgODBCAllowArbitraryQueries = false`, verify the new admin-page policy matches your expectations (see Security section above).
+4. Test connections via Special:ODBCAdmin.
+
+---
+
 ## Upgrading to 1.2.0 from 1.1.0
 
 Version 1.2.0 is a quality and feature release. All users are recommended to upgrade.

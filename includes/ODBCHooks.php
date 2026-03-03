@@ -16,8 +16,9 @@ class ODBCHooks {
 	/**
 	 * Extension registration callback.
 	 *
-	 * Called once when the extension is loaded (via "callback" in extension.json).
-	 * Used for one-time setup like External Data connector registration.
+	 * Called once when the extension is loaded via the 'ExtensionRegistration' hook
+	 * registered in extension.json. Used for one-time setup like External Data connector
+	 * registration.
 	 */
 	public static function onRegistration(): void {
 		self::registerExternalDataConnector();
