@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	PHPUnit configuration for the MediaWiki ODBC Extension.
+
+	This configuration runs standalone unit tests that do NOT require
+	a full MediaWiki installation or a live ODBC connection. Tests use
+	lightweight stubs defined in tests/bootstrap.php.
+
+	Run with:  composer test
+	Or:        vendor/bin/phpunit
+-->
+<phpunit
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+	bootstrap="tests/bootstrap.php"
+	colors="true"
+	cacheDirectory=".phpunit.cache"
+	beStrictAboutTestsThatDoNotTestAnything="true"
+	failOnWarning="true"
+	failOnRisky="true"
+	displayDetailsOnPhpunitDeprecations="false"
+>
+	<testsuites>
+		<testsuite name="unit">
+			<directory>tests/unit</directory>
+		</testsuite>
+	</testsuites>
+
+	<source>
+		<include>
+			<directory suffix=".php">includes</directory>
+		</include>
+		<exclude>
+			<directory>includes/connectors</directory>
+			<directory>includes/specials</directory>
+		</exclude>
+	</source>
+</phpunit>
