@@ -1568,4 +1568,297 @@ The approximate "Month YYYY" format is inconsistent with all other entries. It a
 
 ---
 
-*Last updated: v1.5.0 (2026-03-03) — KI-086 through KI-093 identified and resolved in the same v1.5.0 development cycle (post-review pass). 93 total issues tracked; 91 fully resolved (KI-092 partially resolved — `composer.lock` still needed before release); 2 remain open by design: KI-008 (SELECT \* default), KI-020 (ED standalone caching, partial).*
+## KI-094 — `escapeTemplateParam()` Pipe Character Produces Garbled Output
+
+**Introduced:** v1.0.0  
+**Severity:** Medium  
+**Status:** ✅ Fixed in v1.5.0 — replaced `str_replace()` with `strtr()` for simultaneous replacement (P2-095).  
+**Component:** `includes/ODBCParserFunctions.php`, `escapeTemplateParam()`  
+**Affects:** `{{#display_odbc_table:}}` output for any database value containing `|`
+
+**Description:**
+The `escapeTemplateParam()` method uses sequential `str_replace()` to escape three patterns: `|`, `}}`, and `{{{`. Because `str_replace()` applies replacements in array order, the output of earlier replacements becomes input for later ones:
+
+1. `|` is replaced with `{{!}}` (correct)
+2. The `}}` at the end of `{{!}}` is caught by the second replacement → `&#125;&#125;`
+3. Final output: `{{!&#125;&#125;` (garbled — renders literally in the browser)
+
+**Impact:** Any database value containing a pipe character (`|`) — common in CSV-style data, URLs with query parameters, log messages, or concatenated identifiers — renders as the literal string `{{!&#125;&#125;` when displayed via `{{#display_odbc_table:}}`. The unit test `testEscapeTemplateParamPipe()` explicitly asserts this garbled output and documents it as a "known interaction."
+
+**Workaround:** Avoid database values containing `|` in columns displayed via `{{#display_odbc_table:}}`. Use `{{#for_odbc_table:}}` instead, which uses direct variable substitution without `escapeTemplateParam()`.
+
+**Fix:** Replace `str_replace()` with `strtr()`, which applies all replacements simultaneously:
+
+```php
+return strtr( $value, [
+    '|'   => '{{!}}',
+    '}}'  => '&#125;&#125;',
+    '{{{' => '&#123;&#123;&#123;',
+] );
+```
+
+---
+
+## KI-095 — CHANGELOG.md v1.5.0 Still Marked `[Unreleased]` — Fifth Consecutive Occurrence
+
+**Introduced:** v1.5.0  
+**Severity:** Medium  
+**Status:** ✅ Fixed in v1.5.0 — header dated `2026-03-03`; CI `changelog-check` job added on push to `main` (P2-096).  
+**Component:** `CHANGELOG.md`, release process  
+**Related:** KI-030, KI-041, KI-063
+
+**Description:**
+`CHANGELOG.md` line 8 reads `## [Unreleased] — v1.5.0`. This is the fifth consecutive release with an `[Unreleased]` header:
+
+- v1.0.3: KI-030 → fixed by P2-026
+- v1.1.0: KI-041 → fixed by P2-036
+- v1.4.0: KI-063 → fixed by P2-063 (also added a CI check)
+- v1.5.0: still `[Unreleased]` despite the CI check
+
+The CI check added in P2-063 only fires on `refs/tags/` pushes, not on merges to `main`. It prevents tag creation but not the actual problem: merging code with `[Unreleased]` in the header. Meanwhile, `SECURITY.md` correctly shows `Version 1.5.0 (2026-03-03)`, creating a date inconsistency.
+
+**Impact:** Operators reviewing CHANGELOG.md see a version that appears unreleased, contradicting `extension.json` and `SECURITY.md`. Downstream packaging tools that parse CHANGELOG headers may treat v1.5.0 as pre-release.
+
+**Workaround:** None.
+
+**Fix:** (1) Replace `[Unreleased]` with `2026-03-03`. (2) Add a CI check on `push` to `main` that warns when CHANGELOG contains `[Unreleased]` for a version matching `extension.json`. (3) Add a release checklist step.
+
+---
+
+## KI-096 — `wiki/Special-ODBCAdmin.md` Claims Test Query Bypasses Arbitrary Query Check
+
+**Introduced:** v1.3.0 (documentation not updated after code change)  
+**Severity:** Medium  
+**Status:** ✅ Fixed in v1.5.0 — all three stale bypass claims updated across `wiki/Special-ODBCAdmin.md` and `wiki/Security.md` (P2-097).  
+**Component:** `wiki/Special-ODBCAdmin.md`, `wiki/Security.md`
+
+**Description:**
+Three documentation locations state that the `Special:ODBCAdmin` test query bypasses `$wgODBCAllowArbitraryQueries`:
+
+1. `wiki/Special-ODBCAdmin.md`: "The query bypasses the `$wgODBCAllowArbitraryQueries` check"
+2. `wiki/Security.md`, Known Security Limitations section
+3. `wiki/Security.md`, Attack Surface section (KI-026 reference)
+
+P2-056 (v1.3.0) explicitly added enforcement of this check in `runTestQuery()`. The `wiki/Security.md` release history table correctly describes the v1.3.0 change but three other locations on the same page and `Special-ODBCAdmin.md` were not updated.
+
+**Impact:** Admin operators relying on this documentation may not understand why test queries fail when `$wgODBCAllowArbitraryQueries` is `false`.
+
+**Workaround:** Read the v1.3.0 entry in the Security Release History table.
+
+**Fix:** Update all three locations to reflect the current enforcement behavior.
+
+---
+
+## KI-097 — `wiki/Home.md` and `wiki/_Footer.md` Version Frozen at 1.0.3
+
+**Introduced:** v1.1.0 (first version after the displayed 1.0.3)  
+**Severity:** Medium  
+**Status:** ✅ Fixed in v1.5.0 — both updated to 1.5.0 (P2-098).  
+**Component:** `wiki/Home.md`, `wiki/_Footer.md`
+
+**Description:**
+`wiki/Home.md` line 3 displays "**Version:** 1.0.3" and `wiki/_Footer.md` displays "v1.0.3". The actual current version is 1.5.0 (per `extension.json`). These files have not been updated in 5 releases. The GitHub wiki landing page presents a project that appears abandoned at v1.0.3.
+
+**Impact:** First-impression credibility. Visitors may assume the extension is unmaintained.
+
+**Workaround:** None.
+
+**Fix:** Update both version references to 1.5.0. Consider using a version-agnostic approach (e.g., "See `extension.json` for current version") to prevent future staleness.
+
+---
+
+## KI-098 — `wiki/Contributing.md` Contains Multiple Stale Claims
+
+**Introduced:** v1.4.0 (first version with `require-dev`); v1.5.0 (first version with tests)  
+**Severity:** Medium  
+**Status:** ✅ Fixed in v1.5.0 — removed false `require-dev` and testing claims; added test suite instructions; updated contribution areas (P2-099).  
+**Component:** `wiki/Contributing.md`
+
+**Description:**
+Three distinct stale claims:
+
+1. "There are currently no `require-dev` dependencies defined." — False since v1.4.0 (P2-062).
+2. "There are currently no automated tests." — False since v1.5.0. Three test files exist with ~70 assertions.
+3. The "Areas Needing Contribution" tables list P2-017, P2-018, P2-021, P2-007, P2-019, P2-020, P2-022, P2-023, P3-003, P3-004, P2-008 — all marked ✅ Done or partially done. The entire section suggests no contribution has been made since v1.0.3.
+
+**Impact:** Contributors read incorrect information about the project's testing maturity and open work items.
+
+**Workaround:** Cross-reference `improvement_plan.md` directly.
+
+**Fix:** (1) Remove the stale `require-dev` and "no tests" notes. (2) Update the "Areas Needing Contribution" table to reflect currently-open items from the improvement plan (P3-001, P3-002, P3-005, P3-006, and the remaining portion of P3-003/P3-004). (3) Add instructions for running `composer test` and `composer phpcs`.
+
+---
+
+## KI-099 — `wiki/Architecture.md` Design Limitations Table Contains Stale Rows
+
+**Introduced:** v1.3.0 (ODBCQueryRunner became instance-based); v1.5.0 (tests added)  
+**Severity:** Low  
+**Status:** ✅ Fixed in v1.5.0 — static-classes row updated for `ODBCConnectionManager` only; unit-tests row updated to reflect existing suite (P2-100).  
+**Component:** `wiki/Architecture.md`
+
+**Description:**
+The Design Limitations table has four rows. Two are stale:
+
+- "All-static classes / Not testable / P3-001" — `ODBCQueryRunner` is instance-based since v1.3.0 (P2-055). Only `ODBCConnectionManager` remains all-static.
+- "No unit tests / No regression protection / P3-003" — 3 test files with ~70 assertions exist since v1.5.0.
+
+The remaining two ("No PHP namespaces" and "No interfaces") are still accurate.
+
+**Impact:** Contributors assessing the project's technical debt see a worse picture than reality.
+
+**Workaround:** None.
+
+**Fix:** Update the table to reflect current state. Change the static-classes row to note only `ODBCConnectionManager`. Update the unit-tests row to reflect existing tests and remaining gaps.
+
+---
+
+## KI-100 — `wiki/External-Data-Integration.md` Contains 3 Stale Warnings
+
+**Introduced:** v1.1.0 (code fixes not reflected in wiki)  
+**Severity:** Medium  
+**Status:** ✅ Fixed in v1.5.0 — KI-027 workaround removed; feature parity table updated; KI-028 warning corrected (P2-101).  
+**Component:** `wiki/External-Data-Integration.md`
+
+**Description:**
+Three stale warnings:
+
+1. **KI-027 warning (line ~68):** States the ODBC connector "does not inherit the driver type from `$wgODBCSources`" and recommends adding `'driver'` redundantly. KI-027 was fixed in v1.1.0 (P2-021). The workaround is unnecessary.
+
+2. **Feature parity table:** Shows "UTF-8 conversion: ❌ No" and "Query result caching: ❌ No" for External Data. Since v1.1.0, `odbc_source` mode routes through `executeRawQuery()`, gaining both UTF-8 conversion and caching. Both should be "⚠️ Partial (via `odbc_source`)."
+
+3. **KI-028 warning (line ~146):** States "Only the boolean literal `false` disables the integration." P2-022 (v1.1.0) changed the check to `!$wgODBCExternalDataIntegration`, meaning any falsy value now disables integration. The warning is **factually incorrect**.
+
+**Impact:** Operators follow unnecessary workarounds (KI-027), underestimate ED capabilities (feature parity), or are confused by behavior that contradicts the documented limitation (KI-028).
+
+**Workaround:** None.
+
+**Fix:** (1) Replace KI-027 warning with a "Fixed in v1.1.0" note. (2) Update feature parity table rows. (3) Remove or correct the KI-028 warning.
+
+---
+
+## KI-101 — `wiki/Security.md` Blocklist Table Missing `CAST(` and `CONVERT(`
+
+**Introduced:** v1.5.0 (blocklist updated; wiki not)  
+**Severity:** Low  
+**Status:** ✅ Fixed in v1.5.0 — both patterns added to the blocklist table (P2-102).  
+**Component:** `wiki/Security.md`
+
+**Description:**
+The "Keyword blocklist" table in `wiki/Security.md` lists all patterns blocked by `sanitize()` but omits `CAST(` and `CONVERT(`, which were added in P2-089 (v1.5.0). These are standard SQL obfuscation vectors (e.g., `CAST(0x44524F50 AS CHAR)` → `DROP`).
+
+Additionally, the same page has three stale claims about `$wgODBCAllowArbitraryQueries` bypass (see KI-096).
+
+**Impact:** Security auditors assessing the blocklist see incomplete coverage documentation.
+
+**Workaround:** Review the actual `sanitize()` source code.
+
+**Fix:** Add `CAST(` and `CONVERT(` rows to the blocklist table with appropriate "Obfuscation function" descriptions.
+
+---
+
+## KI-102 — `wiki/Parser-Functions.md` Worked Example References Non-Existent Variable
+
+**Introduced:** v1.0.0 (original documentation)  
+**Severity:** Low  
+**Status:** ✅ Fixed in v1.5.0 — replaced `first_count` with `FirstName` (a mapped variable from the query) (P2-103).  
+**Component:** `wiki/Parser-Functions.md`
+
+**Description:**
+The worked example at the bottom of the page contains:
+
+```wiki
+Total engineers: '''{{#odbc_value: first_count | 0}}'''
+```
+
+The `dept_employees` query maps `FirstName`, `LastName`, `Department`, `Email`. There is no `first_count` variable in the result. This expression always returns the default value `0`, misleading readers into thinking `#odbc_value` can count result rows.
+
+**Impact:** Readers copy the example expecting a count and get a permanent `0`.
+
+**Workaround:** None.
+
+**Fix:** Replace with a valid variable like `FirstName` or remove the misleading count reference and add a comment noting that `#odbc_value` retrieves stored column values, not row counts.
+
+---
+
+## KI-103 — CI Workflow Does Not Run Existing PHPUnit Tests
+
+**Introduced:** v1.5.0 (tests added but CI not updated)  
+**Severity:** Medium  
+**Status:** ✅ Fixed in v1.5.0 — `phpunit` job added to CI workflow (P2-104).  
+**Component:** `.github/workflows/ci.yml`
+
+**Description:**
+The CI workflow runs PHP lint, PHPCS, and PHPStan but does not run PHPUnit. The workflow comments state "PHPUnit tests are planned for v2.0.0" but all prerequisites are already in place:
+
+- `phpunit.xml.dist` exists and is fully configured
+- 3 test files with ~70 assertions exist in `tests/unit/`
+- `tests/bootstrap.php` provides standalone stubs (no MW installation required)
+- `composer test` script is defined
+
+Adding a PHPUnit job requires ~10 lines of YAML.
+
+**Impact:** Regressions in `sanitize()`, `validateIdentifier()`, `buildConnectionString()`, `parseDataMappings()`, and other tested methods are not caught by CI.
+
+**Workaround:** Run `composer test` locally before pushing.
+
+**Fix:** Add a `phpunit` job to `.github/workflows/ci.yml`:
+
+```yaml
+phpunit:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.1'
+    - run: composer install --no-progress
+    - run: composer test
+```
+
+---
+
+## KI-104 — Test Suite Documents Bug as Expected Behavior
+
+**Introduced:** v1.5.0  
+**Severity:** Low  
+**Status:** ✅ Fixed in v1.5.0 — test updated to assert correct output `A{{!}}B` alongside the KI-094 fix (P2-105).  
+**Component:** `tests/unit/ODBCParserFunctionsTest.php`
+
+**Description:**
+`testEscapeTemplateParamPipe()` asserts the garbled output `A{{!&#125;&#125;B` (see KI-094) as the expected result. The test comment acknowledges the "known interaction of the sequential str_replace approach." This has two negative effects:
+
+1. If someone fixes the bug (KI-094), this test will fail even though the fix is correct
+2. The test gives a false sense of passing coverage over broken behavior
+
+**Impact:** Developers see 100% green tests and assume pipe escaping works correctly.
+
+**Workaround:** None.
+
+**Fix:** Update the test alongside the KI-094 fix to assert the correct output `A{{!}}B`.
+
+---
+
+## KI-105 — `MWException` Inheritance Mismatch Between Test Bootstrap and PHPStan Stubs
+
+**Introduced:** v1.5.0  
+**Severity:** Low  
+**Status:** ✅ Fixed in v1.5.0 — stubs file changed to `extends Exception`; also fixed PHP syntax error from mixed global/namespaced code (P2-106).  
+**Component:** `tests/bootstrap.php`, `stubs/MediaWikiStubs.php`
+
+**Description:**
+Two different `MWException` definitions exist:
+
+- `tests/bootstrap.php`: `class MWException extends Exception`
+- `stubs/MediaWikiStubs.php`: `class MWException extends RuntimeException`
+
+In real MediaWiki core, `MWException extends Exception`. The PHPStan stubs file uses `RuntimeException`, which is technically incorrect. While both are `Throwable` and current tests are unaffected, `catch (RuntimeException $e)` blocks would behave differently depending on which stub is loaded.
+
+**Impact:** Minimal for current tests. Could cause subtle test failures during future expansion.
+
+**Workaround:** None.
+
+**Fix:** Change `stubs/MediaWikiStubs.php` to `class MWException extends Exception` to match MW core.
+
+---
+
+*Last updated: v1.5.0 (2026-03-09) — KI-094 through KI-105 identified in Review Pass 10 and all resolved. 105 total issues tracked; 103 fully resolved; KI-092 partially resolved (composer.lock still needed); 2 remain open by design (KI-008 SELECT\* default, KI-020 ED standalone caching partial).*

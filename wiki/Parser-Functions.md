@@ -355,7 +355,7 @@ $wgODBCSources['hr'] = [
  | data=FirstName=FirstName,LastName=LastName,Department=Department,Email=Email
 }}
 
-Total engineers: '''{{#odbc_value: first_count | 0}}'''
+Total engineers: '''{{#odbc_value: FirstName | (none)}}'''
 
 {| class="wikitable"
 ! Name !! Email

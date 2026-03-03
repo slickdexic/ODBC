@@ -8,12 +8,11 @@
 #   phpstan — PHPStan level 3 static analysis on includes/ and ODBCMagic.php.
 #             Uses stubs/MediaWikiStubs.php for MediaWiki type declarations.
 #             Runs on every push and pull_request.
+#   phpunit — Unit tests via PHPUnit (standalone bootstrap, no MW installation).
+#             Runs on every push and pull_request.
 #   release — Guard against releasing with an undated [Unreleased] tag.
 #             Runs ONLY when a version tag (v*) is pushed, preventing false
 #             failures during normal development where [Unreleased] is expected.
-#
-# PHPUnit tests are planned for v2.0.0 (see improvement_plan.md P3-003).
-# Until then, linting, code-style, and static-analysis are the primary CI gates.
 
 name: CI
 
@@ -123,6 +122,36 @@ jobs:
       - name: Run PHPStan
         run: composer phpstan
 
+  # ── PHPUnit Tests ──────────────────────────────────────────────────────────
+  phpunit:
+    name: PHPUnit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock', 'composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-progress --no-interaction --prefer-dist
+
+      - name: Run PHPUnit
+        run: composer test
+
   # ── Release Readiness ──────────────────────────────────────────────────────
   # This job only runs when a version tag (v*) is pushed.
   # During normal development, CHANGELOG.md SHOULD contain [Unreleased] — that
@@ -149,3 +178,23 @@ jobs:
           fi
           if [ "$FAIL" -ne 0 ]; then exit 1; fi
           echo "Release readiness check passed — no [Unreleased] tags found."
+
+  # ── CHANGELOG Version Warning ──────────────────────────────────────────────
+  # Non-blocking check on pushes to main: warns if CHANGELOG still contains
+  # [Unreleased] for the version declared in extension.json.
+  changelog-check:
+    name: CHANGELOG Version Check
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Warn if CHANGELOG has [Unreleased] for current version
+        run: |
+          VERSION=$(grep -oP '"version":\s*"\K[^"]+' extension.json)
+          if grep -q "\[Unreleased\].*$VERSION\|$VERSION.*\[Unreleased\]" CHANGELOG.md; then
+            echo "::warning file=CHANGELOG.md::CHANGELOG.md has [Unreleased] for v$VERSION — remember to date the entry before tagging a release."
+          else
+            echo "CHANGELOG.md looks good for v$VERSION."
+          fi

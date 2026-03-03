@@ -546,11 +546,11 @@ class ODBCParserFunctions {
 	 * @return string The escaped value, safe to embed inside a {{Template|param=VALUE}} call.
 	 */
 	private static function escapeTemplateParam( string $value ): string {
-		return str_replace(
-			[ '|',     '}}',         '{{{' ],
-			[ '{{!}}', '&#125;&#125;', '&#123;&#123;&#123;' ],
-			$value
-		);
+		return strtr( $value, [
+			'|'   => '{{!}}',
+			'}}'  => '&#125;&#125;',
+			'{{{' => '&#123;&#123;&#123;',
+		] );
 	}
 
 	/**

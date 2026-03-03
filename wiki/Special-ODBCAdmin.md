@@ -79,7 +79,7 @@ The **Run Test Query** form accepts a `SELECT` statement and executes it against
 - Only `SELECT` statements are accepted. All other statement types are blocked.
 - The same SQL sanitization rules apply — keyword blocklist, identifier validation.
 - Results are capped at **100 rows** regardless of `$wgODBCMaxRows`.
-- The query bypasses the `$wgODBCAllowArbitraryQueries` check — admin users can always run test queries via this interface.
+- The test query respects `$wgODBCAllowArbitraryQueries` and per-source `allow_queries` (since v1.3.0). If arbitrary queries are disabled, the test query form is unavailable. Admin users can still test connections and browse tables/columns regardless of query settings.
 
 > This is useful for verifying the exact column names returned by a query before writing a `data=` mapping, or for debugging why a wiki page query isn't returning expected results.
 

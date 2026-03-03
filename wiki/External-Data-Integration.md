@@ -63,7 +63,7 @@ $wgExternalDataSources['hr-system'] = [
 ];
 ```
 
-> **Known issue (KI-027):** When using `odbc_source`, the ODBC connector does not inherit the driver type from `$wgODBCSources`. As of v1.0.3, this means TOP/LIMIT syntax detection may fail for SQL Server databases configured via `odbc_source`. **Workaround:** add `'driver' => 'ODBC Driver 17 for SQL Server'` (or your actual driver name) redundantly to the `$wgExternalDataSources` entry even when using `odbc_source`.
+> ~~**Known issue (KI-027):**~~ **Fixed in v1.1.0.** The `odbc_source` mode now correctly inherits the driver type from `$wgODBCSources`. You no longer need to add `'driver'` redundantly to the `$wgExternalDataSources` entry.
 
 ---
 
@@ -74,10 +74,10 @@ The ODBC-via-ED connector has different capabilities than the native ODBC parser
 | Feature | Native ODBC (`#odbc_query`) | External Data (`#get_db_data`) |
 |---------|---------------------------|-------------------------------|
 | Prepared statements | ✅ Yes | ❌ No |
-| Query result caching | ✅ Yes (`$wgODBCCacheExpiry`) | ❌ No |
+| Query result caching | ✅ Yes (`$wgODBCCacheExpiry`) | ⚠️ Partial (via `odbc_source` mode, since v1.1.0) |
 | `$wgODBCMaxRows` enforcement | ✅ Yes | ✅ Yes (since v1.0.3) |
-| TOP/LIMIT auto-detection | ✅ Yes | ⚠️ Partial (KI-027) |
-| UTF-8 conversion | ✅ Yes | ❌ No |
+| TOP/LIMIT auto-detection | ✅ Yes | ✅ Yes (since v1.1.0 — driver inherited from `$wgODBCSources`) |
+| UTF-8 conversion | ✅ Yes | ⚠️ Partial (via `odbc_source` mode, since v1.1.0) |
 | Access to `$wgODBCSources` auth | ✅ Yes | ✅ Via `odbc_source` |
 
 For full feature parity, prefer the native ODBC parser functions in most situations. Use External Data integration when you need its specific features (e.g., cross-connector data merging, ED templates, or existing ED infrastructure).
@@ -143,7 +143,7 @@ $wgODBCExternalDataIntegration = false;   // Must be before wfLoadExtension
 wfLoadExtension( 'ODBC' );
 ```
 
-> **Known issue (KI-028):** Only the boolean literal `false` disables the integration. Integer `0` and `null` are not treated as disabling values. Always use `false`.
+> ~~**Known issue (KI-028):**~~ **Fixed in v1.1.0.** Any falsy value (`false`, `0`, `null`, `''`) now correctly disables the integration. Previous versions required the exact boolean `false`.
 
 ---
 
@@ -158,17 +158,7 @@ The ODBC connector was not registered. Causes:
 
 ### Query returns wrong results (SQL Server via `odbc_source`)
 
-This is KI-027. The TOP/LIMIT syntax detection fails when using `odbc_source` mode. Add the driver key redundantly:
-
-```php
-$wgExternalDataSources['my-source'] = [
-    'type'        => 'odbc_generic',
-    'odbc_source' => 'my-source',
-    'driver'      => 'ODBC Driver 17 for SQL Server',  // ← add this
-    'user'        => '',
-    'password'    => '',
-];
-```
+If you are running a version prior to v1.1.0, the TOP/LIMIT syntax detection may fail when using `odbc_source` mode. Upgrade to v1.1.0+ where the driver is inherited automatically from `$wgODBCSources`.
 
 ### Results are not cached
 

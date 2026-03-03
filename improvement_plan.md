@@ -1691,6 +1691,213 @@ The v1.0.2 section header reads `### Version 1.0.2 (March 2026)`. All other entr
 
 ---
 
+## Phase 2: v1.5.x — Review Pass 10 Findings (2026-03-09)
+
+> Items in this section were identified during Review Pass 10 (comprehensive audit) of the v1.5.0 codebase. None are yet fixed.
+
+---
+
+### P2-095 — Fix `escapeTemplateParam()` Pipe Character Garbling (KI-094)
+
+**Priority:** MEDIUM (functional bug — data corruption)
+**Effort:** Trivial (1-line change)
+**File:** `includes/ODBCParserFunctions.php`, `escapeTemplateParam()`
+**Status:** ✅ Done
+
+Sequential `str_replace()` causes `|` → `{{!}}` → `{{!&#125;&#125;` because the `}}` inside `{{!}}` is caught by the second replacement. Replace with `strtr()`:
+
+```php
+// BEFORE — sequential replacement causes interaction:
+return str_replace(
+    [ '|',     '}}',            '{{{' ],
+    [ '{{!}}', '&#125;&#125;', '&#123;&#123;&#123;' ],
+    $value
+);
+
+// AFTER — simultaneous replacement, no interaction:
+return strtr( $value, [
+    '|'   => '{{!}}',
+    '}}'  => '&#125;&#125;',
+    '{{{' => '&#123;&#123;&#123;',
+] );
+```
+
+Also update `testEscapeTemplateParamPipe()` in `tests/unit/ODBCParserFunctionsTest.php` to assert the correct output `A{{!}}B` (see KI-104).
+
+---
+
+### P2-096 — Date CHANGELOG.md v1.5.0 and Strengthen CI Check (KI-095)
+
+**Priority:** MEDIUM (release process)
+**Effort:** Small
+**Files:** `CHANGELOG.md`, `.github/workflows/ci.yml`
+**Status:** ✅ Done
+
+Replace `## [Unreleased] — v1.5.0` with `## [1.5.0] - 2026-03-03`. This is the fifth consecutive occurrence (KI-030, KI-041, KI-063, now KI-095).
+
+The existing CI check only fires on tag push. Add a second check on `push` to `main` that compares the CHANGELOG version with `extension.json`:
+
+```yaml
+- name: Check CHANGELOG is dated on main
+  if: github.ref == 'refs/heads/main'
+  run: |
+    VERSION=$(grep -oP '"version":\s*"\K[^"]+' extension.json)
+    if grep -q "\[Unreleased\].*$VERSION" CHANGELOG.md; then
+      echo "::warning::CHANGELOG has [Unreleased] for v$VERSION — update before tagging"
+    fi
+```
+
+---
+
+### P2-097 — Fix `wiki/Special-ODBCAdmin.md` Stale Bypass Claim (KI-096)
+
+**Priority:** MEDIUM (documentation contradicts code — security-relevant)
+**Effort:** Trivial (3 text edits across 2 files)
+**Files:** `wiki/Special-ODBCAdmin.md`, `wiki/Security.md`
+**Status:** ✅ Done
+
+Update three locations that claim `Special:ODBCAdmin` test query bypasses `$wgODBCAllowArbitraryQueries`:
+
+1. `wiki/Special-ODBCAdmin.md` — Replace bypass claim with: "The test query respects the `$wgODBCAllowArbitraryQueries` setting and per-source `allow_queries` (since v1.3.0). Admin users can test connections and browse tables regardless of query settings."
+2. `wiki/Security.md`, Known Security Limitations — Remove or correct the bypass claim.
+3. `wiki/Security.md`, Attack Surface section — Update Note KI-026 reference.
+
+---
+
+### P2-098 — Update `wiki/Home.md` and `wiki/_Footer.md` Version (KI-097)
+
+**Priority:** MEDIUM (first-impression accuracy)
+**Effort:** Trivial (2 text edits)
+**Files:** `wiki/Home.md`, `wiki/_Footer.md`
+**Status:** ✅ Done
+
+Replace `1.0.3` with `1.5.0` in both files. Consider a version-agnostic string to prevent future staleness.
+
+---
+
+### P2-099 — Fix `wiki/Contributing.md` Stale Claims (KI-098)
+
+**Priority:** MEDIUM (contributor misguidance)
+**Effort:** Small
+**File:** `wiki/Contributing.md`
+**Status:** ✅ Done
+
+Three changes needed:
+
+1. Remove the note about no `require-dev` dependencies. Replace with instructions to run `composer install` to install dev dependencies.
+2. Replace "There are currently no automated tests" with instructions for `composer test` and an overview of the existing test suite.
+3. Rewrite the "Areas Needing Contribution" section to reflect currently-open items: P3-001, P3-002, P3-005, P3-006, and the remaining scope of P3-003 and P3-004.
+
+---
+
+### P2-100 — Update `wiki/Architecture.md` Design Limitations Table (KI-099)
+
+**Priority:** LOW (contributor accuracy)
+**Effort:** Trivial (2 row edits)
+**File:** `wiki/Architecture.md`
+**Status:** ✅ Done
+
+Update the Design Limitations table:
+- "All-static classes" → "Static `ODBCConnectionManager`" (note that `ODBCQueryRunner` is now instance-based)
+- "No unit tests" → "Partial unit tests (3 files, ~70 assertions; `connectors/` and `specials/` untested)"
+
+---
+
+### P2-101 — Fix `wiki/External-Data-Integration.md` 3 Stale Warnings (KI-100)
+
+**Priority:** MEDIUM (operator misguidance)
+**Effort:** Small (3 text edits)
+**File:** `wiki/External-Data-Integration.md`
+**Status:** ✅ Done
+
+1. Replace KI-027 warning with: "~~KI-027 — Fixed in v1.1.0.~~ The `odbc_source` mode now correctly inherits the driver from `$wgODBCSources`. No need to add `driver` redundantly."
+2. Update feature parity table: UTF-8 conversion → "⚠️ Partial (via `odbc_source`)"; Query result caching → "⚠️ Partial (via `odbc_source`)".
+3. Remove or correct KI-028 warning — any falsy value now disables integration since v1.1.0.
+
+---
+
+### P2-102 — Add `CAST(` / `CONVERT(` to `wiki/Security.md` Blocklist Table (KI-101)
+
+**Priority:** LOW (documentation completeness)
+**Effort:** Trivial
+**File:** `wiki/Security.md`
+**Status:** ✅ Done
+
+Add two rows to the blocklist table:
+
+| `CAST(` | Obfuscation function — can encode blocked keywords as hex |
+| `CONVERT(` | Obfuscation function — can encode blocked keywords as hex |
+
+---
+
+### P2-103 — Fix `wiki/Parser-Functions.md` Worked Example Variable (KI-102)
+
+**Priority:** LOW (documentation accuracy)
+**Effort:** Trivial
+**File:** `wiki/Parser-Functions.md`
+**Status:** ✅ Done
+
+Replace `{{#odbc_value: first_count | 0}}` with a valid variable from the `dept_employees` query (e.g., `{{#odbc_value: FirstName}}`), or replace the entire "Total engineers" line with a meaningful example.
+
+---
+
+### P2-104 — Add PHPUnit Job to CI Workflow (KI-103)
+
+**Priority:** MEDIUM (quality assurance)
+**Effort:** Trivial (~10 lines YAML)
+**File:** `.github/workflows/ci.yml`
+**Status:** ✅ Done
+
+Add a PHPUnit step:
+
+```yaml
+phpunit:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.1'
+    - run: composer install --no-progress
+    - run: composer test
+```
+
+Also update the comment that says "PHPUnit tests are planned for v2.0.0."
+
+---
+
+### P2-105 — Fix `escapeTemplateParam` Test to Assert Correct Output (KI-104)
+
+**Priority:** LOW (testing practice)
+**Effort:** Trivial
+**File:** `tests/unit/ODBCParserFunctionsTest.php`
+**Status:** ✅ Done (completed alongside P2-095)
+
+After P2-095 is implemented, update `testEscapeTemplateParamPipe()`:
+
+```php
+// BEFORE — asserts buggy output:
+$this->assertSame( 'A{{!&#125;&#125;B', $result );
+
+// AFTER — asserts correct output:
+$this->assertSame( 'A{{!}}B', $result );
+```
+
+Remove the "known interaction" comment.
+
+---
+
+### P2-106 — Fix `MWException` Inheritance in `stubs/MediaWikiStubs.php` (KI-105)
+
+**Priority:** LOW (correctness)
+**Effort:** Trivial (1-line change)
+**File:** `stubs/MediaWikiStubs.php`
+**Status:** ✅ Done — also fixed PHP syntax error from mixed global/namespaced code by wrapping global-scope declarations in `namespace { }` block.
+
+Change `class MWException extends RuntimeException` to `class MWException extends Exception` to match MediaWiki core.
+
+---
+
 ## Phase 3: v2.0.0 — Architectural Refactoring
 
 > Items in this section represent significant architectural changes
@@ -1943,9 +2150,21 @@ The following documentation improvements should be addressed in the next release
 | P2-092 Remove EOL packages from composer.json (KI-091) | v1.5.0 | ✅ Done | LOW | Trivial | Developer tooling |
 | P2-093 Add composer.lock; fix CI cache key (KI-092) | v1.5.0 | ⚠️ Partial | LOW | Small | CI reproducibility |
 | P2-094 Fix SECURITY.md v1.0.2 date format (KI-093) | v1.5.0 | ✅ Done | DOCS | Trivial | Documentation consistency |
+| P2-095 Fix escapeTemplateParam() pipe garbling (KI-094) | v1.5.x | ✅ Done | MEDIUM | Trivial | Data corruption in display_odbc_table |
+| P2-096 Date CHANGELOG v1.5.0 + strengthen CI check (KI-095) | v1.5.x | ✅ Done | MEDIUM | Small | Release process — 5th consecutive failure |
+| P2-097 Fix wiki/Special-ODBCAdmin.md bypass claim (KI-096) | v1.5.x-docs | ✅ Done | MEDIUM | Trivial | Security doc contradicts code |
+| P2-098 Update wiki/Home.md + _Footer.md version (KI-097) | v1.5.x-docs | ✅ Done | MEDIUM | Trivial | First-impression accuracy |
+| P2-099 Fix wiki/Contributing.md stale claims (KI-098) | v1.5.x-docs | ✅ Done | MEDIUM | Small | Contributor misguidance |
+| P2-100 Update wiki/Architecture.md limitations table (KI-099) | v1.5.x-docs | ✅ Done | LOW | Trivial | Contributor accuracy |
+| P2-101 Fix wiki/External-Data-Integration.md 3 stale warnings (KI-100) | v1.5.x-docs | ✅ Done | MEDIUM | Small | Operator misguidance |
+| P2-102 Add CAST(/CONVERT( to wiki/Security.md blocklist (KI-101) | v1.5.x-docs | ✅ Done | LOW | Trivial | Documentation completeness |
+| P2-103 Fix wiki/Parser-Functions.md worked example (KI-102) | v1.5.x-docs | ✅ Done | LOW | Trivial | Misleading example |
+| P2-104 Add PHPUnit job to CI workflow (KI-103) | v1.5.x | ✅ Done | MEDIUM | Trivial | CI quality — tests exist but don't run |
+| P2-105 Fix escapeTemplateParam test assertion (KI-104) | v1.5.x | ✅ Done | LOW | Trivial | Test normalizes buggy behavior |
+| P2-106 Fix MWException inheritance in stubs (KI-105) | v1.5.x | ✅ Done | LOW | Trivial | Stubs/test consistency |
 | P3-001 Service container | v2.0.0 | Open | HIGH | Large | Architecture |
 | P3-002 Interfaces | v2.0.0 | Open | MEDIUM | Moderate | Testability |
-| P3-003 Unit test suite | v2.0.0 | Open | HIGH | Large | Quality assurance |
-| P3-004 CI + code standards | v2.0.0 | Open | MEDIUM | Moderate | Quality assurance |
+| P3-003 Unit test suite | v2.0.0 | ⚠️ Partial | HIGH | Large | Quality assurance (3 test files exist) |
+| P3-004 CI + code standards | v2.0.0 | ⚠️ Partial | MEDIUM | Moderate | Quality assurance (.phpcs.xml + CI exist) |
 | P3-006 Parameterized WHERE | v2.0.0 | Open | HIGH | Large | Security |
 

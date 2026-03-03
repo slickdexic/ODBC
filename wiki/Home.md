@@ -1,6 +1,6 @@
 # MediaWiki ODBC Extension
 
-**Version:** 1.0.3 &nbsp;|&nbsp; **License:** GPL-2.0-or-later &nbsp;|&nbsp; **Requires:** MediaWiki 1.39+, PHP 7.4+
+**Version:** 1.5.0 &nbsp;|&nbsp; **License:** GPL-2.0-or-later &nbsp;|&nbsp; **Requires:** MediaWiki 1.39+, PHP 7.4+
 
 The ODBC extension connects MediaWiki to any ODBC-accessible database. Wiki editors can query databases directly from page content using parser functions, with optional integration into the [External Data](https://www.mediawiki.org/wiki/Extension:External_Data) extension.
 

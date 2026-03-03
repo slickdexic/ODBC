@@ -26,7 +26,7 @@ Contributions are welcome. This page covers how to set up a development environm
    ```bash
    composer install
    ```
-   > **Note:** There are currently no `require-dev` dependencies defined. This is a known gap — PHPUnit and MediaWiki CodeSniffer will be added in a future release.
+   This installs dev dependencies (PHPUnit, PHP_CodeSniffer, PHPStan) required for running tests and linting.
 
 3. **Load the extension** in your test MediaWiki's `LocalSettings.php`:
    ```php
@@ -74,13 +74,31 @@ public static function buildConnectionString( array $config ): string {
 
 ### Testing
 
-There are currently no automated tests. When making changes, manually test:
+The extension has a standalone PHPUnit test suite that runs without a MediaWiki installation. Tests are in `tests/unit/` and use a lightweight bootstrap (`tests/bootstrap.php`) that provides MW type stubs.
+
+**Running the full test suite:**
+```bash
+composer test
+```
+
+**Running a specific test file:**
+```bash
+vendor/bin/phpunit tests/unit/ODBCParserFunctionsTest.php
+```
+
+**Running linting and static analysis:**
+```bash
+composer phpcs        # PHP_CodeSniffer (MediaWiki coding standard)
+composer phpstan      # PHPStan level 3
+```
+
+Currently tested areas include `ODBCParserFunctions` (data mapping, escaping, row selection), `ODBCConnectionManager` (connection string building, config validation), and `ODBCQueryRunner` (sanitization, identifier validation, row-limit syntax). Adding test coverage for `SpecialODBCAdmin` and `EDConnectorOdbcGeneric` is actively encouraged.
+
+When making changes, also manually test:
 1. The specific parser function(s) affected
 2. The `Special:ODBCAdmin` interface if touching the admin page
 3. External Data integration if touching `EDConnectorOdbcGeneric`
 4. Both DSN mode and driver mode connections if touching `ODBCConnectionManager`
-
-Adding automated test coverage is actively encouraged — see [improvement_plan.md P3-003](https://github.com/slickdexic/ODBC/blob/main/improvement_plan.md).
 
 ---
 
@@ -130,31 +148,21 @@ Include:
 
 The following areas have open improvement plan items and are good candidates for contribution. See [improvement_plan.md](https://github.com/slickdexic/ODBC/blob/main/improvement_plan.md) for full details.
 
-### High Priority
+### Architecture (v2.0.0)
 
 | Item | Description |
 |------|-------------|
-| P2-017 | Fix `pingConnection()` to use `odbc_tables()` instead of `SELECT 1` — fixes MS Access |
-| P2-018 | Move `UNION` to word-boundary regex match — fixes false positive on identifiers like `LABOUR_UNION` |
-| P2-021 | Fix ED connector `odbc_source` mode to inherit driver from `$wgODBCSources` |
-
-### Medium Priority
-
-| Item | Description |
-|------|-------------|
-| P2-007 | Add per-page query count limit (`$wgODBCMaxQueriesPerPage`) |
-| P2-019 | Add ODBC connection string value escaping to `buildConnectionString()` |
-| P2-020 | Call `validateConfig()` from `connect()` (it's currently dead code) |
-| P2-022 | Fix falsy check for `$wgODBCExternalDataIntegration` |
-| P2-023 | Add debug log entry when `odbc_setoption()` fails to set timeout |
+| P3-001 | Convert `ODBCConnectionManager` to a MediaWiki service (eliminate static state) |
+| P3-002 | Introduce interfaces for `ODBCConnectionManager` and `ODBCQueryRunner` (enables mocking) |
+| P3-006 | Parameterized WHERE — allow safe runtime parameter injection in composed queries |
 
 ### Quality / Infrastructure
 
 | Item | Description |
 |------|-------------|
-| P3-003 | Add a PHPUnit test suite — there are currently zero automated tests |
-| P3-004 | Add `.phpcs.xml` and a CI workflow (GitHub Actions) |
-| P2-008 | Extract the repeated error handler installation pattern to a shared utility |
+| P3-003 | Expand unit test suite — `SpecialODBCAdmin` and `EDConnectorOdbcGeneric` have no test coverage yet |
+| P3-004 | Raise PHPStan level from 3 to 5+ (part of v2.0.0 quality target) |
+| P2-093 | Commit `composer.lock` — run `composer install` on PHP 8.1+ and commit the lockfile |
 
 ---
 

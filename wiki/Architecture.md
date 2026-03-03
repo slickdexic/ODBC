@@ -189,10 +189,10 @@ The current architecture has several known design limitations that are being add
 
 | Limitation | Impact | Planned fix |
 |------------|--------|-------------|
-| All-static classes | Not testable; hard to mock; global state | P3-001: Convert to MediaWiki Services |
+| Static `ODBCConnectionManager` | Not testable; hard to mock; global state (`ODBCQueryRunner` is now instance-based since v1.3.0) | P3-001: Convert to MediaWiki Services |
 | No PHP namespaces | Legacy `AutoloadClasses` instead of PSR-4 `AutoloadNamespaces` | Part of P3-001 |
 | No interfaces | Cannot mock or substitute implementations in tests | P3-002 |
-| No unit tests | No regression protection | P3-003 |
+| Partial unit tests | 3 test files (~70 assertions) cover core logic; `SpecialODBCAdmin` and `EDConnectorOdbcGeneric` untested | P3-003: Expand test suite |
 
 See [improvement_plan.md](https://github.com/slickdexic/ODBC/blob/main/improvement_plan.md) for the full plan.
 

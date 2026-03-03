@@ -34,6 +34,8 @@ When composed queries are allowed, user-supplied SQL fragments (`where=`, `from=
 | `<?` | PHP tag injection |
 | `CHAR(` | Obfuscation function |
 | `CONCAT(` | Obfuscation / evasion function |
+| `CAST(` | Obfuscation function — can encode blocked keywords as hex |
+| `CONVERT(` | Obfuscation function — can encode blocked keywords as hex |
 | `UNION` | UNION-based injection |
 | `DROP` / `DELETE` / `INSERT` / `UPDATE` / `TRUNCATE` / `GRANT` / `REVOKE` / `ALTER` / `CREATE` / `EXEC` / `EXECUTE` | DDL/DML commands |
 
@@ -60,7 +62,7 @@ All state-changing POST actions in `Special:ODBCAdmin` (including the "Run Query
 
 - `odbc-query` is required to invoke any parser function from a wiki page. Unauthenticated users and users without this right cannot trigger any database access.
 - `odbc-admin` is required to access `Special:ODBCAdmin`. Even with `odbc-admin`, the admin page enforces SELECT-only queries — it does not bypass the sanitizer.
-- The connection test in `Special:ODBCAdmin` bypasses the `$wgODBCAllowArbitraryQueries` check (any admin can test connections regardless of that setting). This is intentional.
+- Since v1.3.0, the test query form in `Special:ODBCAdmin` respects `$wgODBCAllowArbitraryQueries` and per-source `allow_queries`. Connection tests and table/column browsing are always available to admins.
 
 ### Connection Pooling Limits
 
@@ -161,9 +163,9 @@ In **ad-hoc mode** (`$wgODBCAllowArbitraryQueries = true` or per-source `allow_q
 - View configured source names, driver names, and server addresses (not passwords)
 - Test whether a connection succeeds
 - Browse table and column names
-- Run ad-hoc SELECT queries (blocked patterns still apply; non-SELECT is blocked)
+- Run ad-hoc SELECT queries via the test query form — but only when `$wgODBCAllowArbitraryQueries` or per-source `allow_queries` permits it (enforced since v1.3.0). Blocked patterns still apply; non-SELECT is blocked.
 
-> **Note (KI-026):** The admin test query function bypasses the `$wgODBCAllowArbitraryQueries` check — admin users can run test queries regardless of whether arbitrary queries are allowed globally.
+> **Note:** Connection testing and table/column browsing are always available to admins, regardless of the `$wgODBCAllowArbitraryQueries` setting. Only the test query form is restricted.
 
 ---
 

@@ -5,10 +5,13 @@ All notable changes to the MediaWiki ODBC Extension will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — v1.5.0
+## [1.5.0] - 2026-03-03
 
 ### Fixed
 
+- **P2-095 — `escapeTemplateParam()` pipe character garbling fixed** — Sequential `str_replace()` caused `|` → `{{!}}` → `{{!&#125;&#125;` because the `}}` inside `{{!}}` was caught by the second replacement. Replaced with `strtr()` for simultaneous replacement. Pipe characters in database values now render correctly via `{{#display_odbc_table:}}`. (KI-094)
+- **P2-105 — Test assertion for pipe escaping corrected** — `testEscapeTemplateParamPipe()` previously asserted the garbled output `A{{!&#125;&#125;B` as expected. Updated to assert the correct output `A{{!}}B`. (KI-104)
+- **P2-106 — `MWException` inheritance in PHPStan stubs corrected** — `stubs/MediaWikiStubs.php` declared `MWException extends RuntimeException` but MediaWiki core uses `extends Exception`. Fixed to match core. Stubs file also restructured with a proper `namespace {}` block to fix a PHP syntax error with mixed global/namespaced code. (KI-105)
 - **P2-065 — `validateIdentifier()` regex now rejects trailing dots and over-deep segments** — The previous regex `/^[a-zA-Z_][a-zA-Z0-9_\.]*$/` accepted `table.`, `table..column`, and arbitrarily deep chains like `a.b.c.d.e`. The new regex `/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*){0,2}$/` permits only 1–3 properly-formed dot-separated segments (`table`, `schema.table`, `catalog.schema.table`) and rejects all malformed forms. (KI-065)
 - **P2-064 — `executeComposed()` now rejects `having=` without `group by=`** — A HAVING clause without a GROUP BY clause is invalid on PostgreSQL and SQL Server and produces a cryptic driver-level error. The extension now validates this combination before building the SQL and returns a clear `odbc-error-having-without-groupby` i18n message. (KI-064)
 - **P2-066 — `withOdbcWarnings()` now filters to ODBC-originated warnings only** — The previous handler converted *all* PHP `E_WARNING` errors to `MWException`, including warnings from filesystem, network, or other PHP code running inside the callback. The handler now checks the message string for ODBC driver signatures (`odbc`, `[unixODBC]`, `[Microsoft]`, `[IBM]`, `[Oracle]`) and passes non-ODBC warnings to the next registered handler instead. (KI-066)
@@ -49,6 +52,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P2-092 — `composer.json` EOL package version ranges dropped** — `"composer/installers": "^1.0 || ^2.0"` narrowed to `"^2.0"` (1.x EOL). `"phpunit/phpunit": "^9.0 || ^10.0"` updated to `"^10.0 || ^11.0"` (PHPUnit 9.x EOL February 2024, PHP 8.1+ only needs 10/11). (KI-091)
 - **P2-094 — `SECURITY.md` v1.0.2 and v1.0.1 release history dates corrected** — Both entries used the imprecise "Month YYYY" format ("March 2026") inconsistent with all other entries' `YYYY-MM-DD` format. Corrected to `2026-03-02` (v1.0.2) and `2026-03-01` (v1.0.1). (KI-093)
 - **`i18n/qqq.json` — `odbc-error-config-invalid` translator note added** — The `odbc-error-config-invalid` message was the only message key in `en.json` without a corresponding translator documentation entry in `qqq.json`. Entry added with full parameter descriptions for `$1` (source ID) and `$2` (comma-separated list of missing configuration keys).
+- **P2-104 — PHPUnit added to CI workflow** — A new `phpunit` CI job runs `composer test` on every push and pull request, catching regressions in tested methods. Also added a non-blocking `changelog-check` job that warns when CHANGELOG contains `[Unreleased]` for the current `extension.json` version on pushes to `main`. (KI-103, KI-095)
+- **P2-096 — CHANGELOG v1.5.0 dated** — The v1.5.0 entry was still marked `[Unreleased]` (fifth consecutive occurrence). Dated `2026-03-03`. (KI-095)
+- **P2-097 — `wiki/Special-ODBCAdmin.md` and `wiki/Security.md` bypass claims fixed** — Three locations claimed the admin test query bypasses `$wgODBCAllowArbitraryQueries`. This was fixed in v1.3.0; documentation updated to reflect current enforcement. (KI-096)
+- **P2-098 — `wiki/Home.md` and `wiki/_Footer.md` version updated to 1.5.0** — Both displayed 1.0.3 since the initial release. (KI-097)
+- **P2-099 — `wiki/Contributing.md` stale claims corrected** — Removed false "no require-dev" and "no automated tests" claims. Added test-running instructions. Updated "Areas Needing Contribution" to reflect currently-open items. (KI-098)
+- **P2-100 — `wiki/Architecture.md` Design Limitations table updated** — Corrected stale "all-static classes" row (only `ODBCConnectionManager` is static since v1.3.0) and "no unit tests" row (3 test files exist since v1.5.0). (KI-099)
+- **P2-101 — `wiki/External-Data-Integration.md` 3 stale warnings corrected** — KI-027 workaround removed (fixed in v1.1.0); feature parity table updated for caching and UTF-8 via `odbc_source`; KI-028 warning corrected (any falsy value now works since v1.1.0). (KI-100)
+- **P2-102 — `wiki/Security.md` blocklist table updated** — Added `CAST(` and `CONVERT(` patterns (present in code since P2-089 but missing from documentation). (KI-101)
+- **P2-103 — `wiki/Parser-Functions.md` worked example variable fixed** — Replaced `first_count` (non-existent variable) with `FirstName` from the query's mapped columns. (KI-102)
 
 ---
 

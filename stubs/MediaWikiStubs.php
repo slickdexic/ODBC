@@ -21,6 +21,8 @@
 
 declare( strict_types=0 );
 
+namespace {
+
 // ── Global functions ──────────────────────────────────────────────────────
 
 /**
@@ -58,10 +60,10 @@ function wfDeprecated( string $function, $version = false, $component = false, i
 // ── Global classes ────────────────────────────────────────────────────────
 
 /**
- * MediaWiki exception class — extends RuntimeException so it is always
- * a Throwable and can be caught with catch ( MWException $e ).
+ * MediaWiki exception class — extends Exception (matching MediaWiki core).
+ * Always a Throwable and can be caught with catch ( MWException $e ).
  */
-class MWException extends RuntimeException {
+class MWException extends Exception {
 }
 
 /**
@@ -414,6 +416,8 @@ class ExtensionRegistry {
 		return false;
 	}
 }
+
+} // end global namespace
 
 // ── Namespaced classes ─────────────────────────────────────────────────────
 
