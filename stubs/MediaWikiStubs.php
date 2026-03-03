@@ -21,6 +21,8 @@
 
 declare( strict_types=0 );
 
+namespace {
+
 // ── Global functions ──────────────────────────────────────────────────────
 
 /**
@@ -195,6 +197,12 @@ class PPNode {
  * A template expansion frame (used with SFH_OBJECT_ARGS).
  */
 class PPFrame {
+	/** Suppress argument expansion. */
+	public const NO_ARGS = 1;
+
+	/** Suppress template expansion. */
+	public const NO_TEMPLATES = 2;
+
 	/**
 	 * Expand a parse-tree node or string.
 	 *
@@ -415,6 +423,78 @@ class ExtensionRegistry {
 	}
 }
 
+/**
+ * Global Config type alias — used by ODBCQueryRunner (\Config type-hint).
+ * In real MediaWiki this is MediaWiki\Config\Config.
+ */
+class Config {
+	/**
+	 * Retrieve a configuration value.
+	 *
+	 * @param string $name The config key.
+	 * @return mixed
+	 */
+	public function get( string $name ) {
+		return null;
+	}
+}
+
+/**
+ * External Data extension base connector class.
+ * Stub so EDConnectorOdbcGeneric can extend it for PHPStan analysis.
+ */
+class EDConnectorComposed {
+	/** @var array */
+	protected $credentials = [];
+
+	/** @var array */
+	protected $columns = [];
+
+	/** @var array */
+	protected $joins = [];
+
+	/** @var array */
+	protected $tables = [];
+
+	/** @var array */
+	protected $conditions = [];
+
+	/** @var array */
+	protected $sqlOptions = [];
+
+	/** @var string|null */
+	protected $dbId;
+
+	/**
+	 * @param array &$args
+	 * @param \MediaWiki\Title\Title $title
+	 */
+	protected function __construct( array &$args, $title ) {
+	}
+
+	/**
+	 * Report an error.
+	 * @param string $code
+	 * @param mixed ...$params
+	 */
+	protected function error( string $code, ...$params ): void {
+	}
+
+	/** Check composed query parameters for SQL injection attempts. */
+	protected function checkComposedParams(): void {
+	}
+
+	/**
+	 * Set the data source credentials from connector arguments.
+	 * @param array $params Supplemented parameters.
+	 * @return mixed
+	 */
+	protected function setCredentials( array $params ) {
+	}
+}
+
+} // end namespace (global)
+
 // ── Namespaced classes ─────────────────────────────────────────────────────
 
 namespace MediaWiki {
@@ -430,8 +510,8 @@ namespace MediaWiki {
 		}
 
 		/** Get the main site configuration object. */
-		public function getMainConfig(): \MediaWiki\Config\Config {
-			return new \MediaWiki\Config\Config();
+		public function getMainConfig(): \Config {
+			return new \Config();
 		}
 
 		/** Get the permission manager service. */
@@ -563,6 +643,14 @@ namespace MediaWiki\Permissions {
 		public function userHasRight( \MediaWiki\User\UserIdentity $user, string $action ): bool {
 			return false;
 		}
+	}
+}
+
+namespace MediaWiki\Title {
+	/**
+	 * Represents a wiki page title (namespaced variant).
+	 */
+	class Title extends \Title {
 	}
 }
 

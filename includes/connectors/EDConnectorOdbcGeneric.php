@@ -54,7 +54,7 @@ if ( !class_exists( 'EDConnectorComposed', false ) ) {
  */
 class EDConnectorOdbcGeneric extends EDConnectorComposed {
 
-	/** @var bool $keepExternalVarsCase External variables' case ought to be preserved. */
+	/** @var bool External variables' case ought to be preserved. */
 	public $keepExternalVarsCase = true;
 
 	/** @const string TEMPLATE SQL query template (no trailing semicolon for ODBC driver compatibility). */
@@ -63,10 +63,10 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 	/** @const string DEFAULT_ENCODING Default encoding for detection. */
 	protected const DEFAULT_ENCODING = 'ISO-8859-15';
 
-	/** @var resource $odbcConnection The ODBC connection resource. */
+	/** @var resource The ODBC connection resource. */
 	private $odbcConnection;
 
-	/** @var string|null $odbcSourceId Reference to $wgODBCSources entry. */
+	/** @var string|null Reference to $wgODBCSources entry. */
 	private $odbcSourceId;
 
 	/**
@@ -211,7 +211,7 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 
 		try {
 			$this->odbcConnection = ODBCConnectionManager::withOdbcWarnings(
-				fn() => odbc_connect( $dsn, $user, $password )
+				fn () => odbc_connect( $dsn, $user, $password )
 			);
 		} catch ( MWException $e ) {
 			$this->error( 'externaldata-db-could-not-connect', $e->getMessage() );
@@ -335,7 +335,7 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 			}
 			// Convert associative arrays to stdClass objects, matching the format
 			// expected by the External Data framework when iterating result rows.
-			return array_map( static fn( array $row ): \stdClass => (object)$row, $rows );
+			return array_map( static fn ( array $row ): \stdClass => (object)$row, $rows );
 		}
 
 		// Standalone mode: execute via prepare/setoption/execute so that the configured

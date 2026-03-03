@@ -1,0 +1,52 @@
+{
+	// VS Code workspace settings for the ODBC MediaWiki extension.
+	// Shared with the team — commit to version control.
+
+	// ── Editor Defaults ─────────────────────────────────────────────────
+	"editor.formatOnSave": false,
+	"editor.insertSpaces": false,
+	"editor.tabSize": 4,
+	"files.eol": "\n",
+	"files.trimTrailingWhitespace": true,
+	"files.insertFinalNewline": true,
+
+	// ── PHP IntelliSense ────────────────────────────────────────────────
+	"php.validate.enable": true,
+	"php.validate.run": "onType",
+	"php.suggest.basic": true,
+
+	// ── Intelephense (recommended PHP extension) ────────────────────────
+	"intelephense.environment.phpVersion": "7.4.0",
+	"intelephense.stubs": [
+		"Core", "date", "json", "pcre", "standard",
+		"odbc", "curl", "mbstring", "xml", "dom"
+	],
+	"intelephense.files.exclude": [
+		"**/vendor/**/{Tests,tests}/**",
+		"**/.history/**"
+	],
+
+	// ── File Associations ──────────────────────────────────────────────
+	"files.associations": {
+		"*.php": "php",
+		"extension.json": "json",
+		"composer.json": "json"
+	},
+
+	// ── Search Exclusions ──────────────────────────────────────────────
+	"search.exclude": {
+		"**/vendor/**": true,
+		"**/node_modules/**": true,
+		"composer.lock": true,
+		"composer.phar": true
+	},
+
+	// ── Files to Exclude from Explorer ─────────────────────────────────
+	"files.exclude": {
+		"**/.git": true,
+		"**/vendor": false
+	},
+
+	// ── Recommended Extensions ─────────────────────────────────────────
+	// See .vscode/extensions.json for the full list.
+}

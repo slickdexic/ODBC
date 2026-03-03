@@ -5,9 +5,16 @@
 # Action required before first release: run `composer install` locally on
 # PHP 8.1+ and commit the generated composer.lock.
 
+# Composer phar (local download, not committed)
+/composer.phar
+/composer-setup.php
+
 # IDE / editor files
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
+.vs/
 *.swp
 *.swo
 *~

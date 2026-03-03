@@ -9,8 +9,6 @@
  * @license GPL-2.0-or-later
  */
 
-use MediaWiki\MediaWikiServices;
-
 class ODBCHooks {
 
 	/**

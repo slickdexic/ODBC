@@ -30,7 +30,8 @@ class ODBCQueryRunner {
 	private $config;
 
 	/** @var \Config Cached main config instance. Fetched once in the constructor to avoid
-	 *              repeated MediaWikiServices::getInstance()->getMainConfig() calls in hot paths. */
+	 *              repeated MediaWikiServices::getInstance()->getMainConfig() calls in hot paths.
+	 */
 	private $mainConfig;
 
 	/** @var resource|object The ODBC connection. */
