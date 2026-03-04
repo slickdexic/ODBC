@@ -456,7 +456,7 @@ class EDConnectorComposed {
 	/** @var array */
 	protected $tables = [];
 
-	/** @var array */
+	/** @var array|string */
 	protected $conditions = [];
 
 	/** @var array */

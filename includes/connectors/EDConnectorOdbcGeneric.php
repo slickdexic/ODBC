@@ -63,7 +63,7 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 	/** @const string DEFAULT_ENCODING Default encoding for detection. */
 	protected const DEFAULT_ENCODING = 'ISO-8859-15';
 
-	/** @var resource The ODBC connection resource. */
+	/** @var resource|null The ODBC connection resource. */
 	private $odbcConnection;
 
 	/** @var string|null Reference to $wgODBCSources entry. */
@@ -146,7 +146,7 @@ class EDConnectorOdbcGeneric extends EDConnectorComposed {
 	 * Delegates to the shared ODBCQueryRunner::sanitize() method for
 	 * a single consistent blocklist across the entire extension.
 	 */
-	private function checkComposedParams(): void {
+	protected function checkComposedParams(): void {
 		$paramsToCheck = [
 			'from' => $this->tables ?? [],
 			'data' => $this->columns ?? [],
