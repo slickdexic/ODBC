@@ -2030,6 +2030,75 @@ This would allow the extension to construct a true parameterized query via `odbc
 
 ---
 
+## Phase 2 Continuation: Review Pass 11 Items (KI-110 through KI-114)
+
+Items identified during Review Pass 11 (independent critical audit). All are v1.5.x-scope fixes.
+
+### P2-111 — Fix wiki/Parser-Functions.md Worked Example Case Mismatch (KI-110)
+
+**Priority:** MEDIUM (most visible doc section produces broken output)
+**Effort:** Trivial
+
+The worked example uses mixed-case `{{{FirstName}}}`, `{{{LastName}}}`, etc. in both the `Template:EmployeeRow` definition and the `#for_odbc_table` body. Since `mergeResults()` lowercases all variable names, only `{{{firstname}}}`, `{{{lastname}}}`, etc. would match. The example produces broken output.
+
+**Tasks:**
+
+1. Change `Template:EmployeeRow` definition to use lowercase parameters: `{{{firstname}}}`, `{{{lastname}}}`, `{{{department}}}`, `{{{email}}}`
+2. Change `#for_odbc_table` body to use lowercase: `{{{firstname}}} {{{lastname}}} {{!}}{{!}} {{{email}}}`
+3. Change `data=` parameter to use lowercase local names: `data=firstname=FirstName,lastname=LastName,department=Department,email=Email`
+4. Add a note near the `data=` documentation explaining that local variable names are normalized to lowercase
+
+### P2-112 — Remove Stale KI-028 Warning from wiki/Configuration.md (KI-111)
+
+**Priority:** MEDIUM (gives operators incorrect configuration advice)
+**Effort:** Trivial
+
+`wiki/Configuration.md` line 254 contains a stale KI-028 warning stating "Only the exact boolean `false` disables integration." This was fixed in v1.1.0 (P2-022). The equivalent warning in `wiki/External-Data-Integration.md` was corrected by P2-101 but this instance was missed.
+
+**Tasks:**
+
+1. Replace the stale KI-028 warning block with a corrected note: "Any falsy value (`false`, `0`, `null`, `''`) disables External Data integration (corrected in v1.1.0)."
+2. Verify no other wiki pages contain the same stale warning
+
+### P2-113 — Apply Full Wikitext Escaping in forOdbcTable() (KI-112)
+
+**Priority:** LOW (edge-case in nested template contexts)
+**Effort:** Trivial
+
+`forOdbcTable()` only escapes `{{{` in database values. Unlike `displayOdbcTable()` which uses `escapeTemplateParam()` to also escape `|` and `}}`, `forOdbcTable()` has incomplete escaping.
+
+**Tasks:**
+
+1. Replace the `str_replace( '{{{', ...)` call in `forOdbcTable()` with `self::escapeTemplateParam( $value )`
+2. Add a unit test for `forOdbcTable()` with values containing `|` and `}}`
+
+### P2-114 — Document Metadata Timeout Limitation (KI-113)
+
+**Priority:** LOW (admin-only functionality)
+**Effort:** Trivial
+
+`getTableColumns()` and `getTables()` in `ODBCQueryRunner` have no `odbc_setoption()` timeout because the ODBC metadata functions return result resources, not statement handles.
+
+**Tasks:**
+
+1. Add a note to `wiki/Special-ODBCAdmin.md` in the "Browse Tables" section warning that metadata operations may hang if the source is unresponsive
+2. Recommend using the "Test Connection" action first to verify connectivity
+3. Optionally, wrap metadata calls in `set_time_limit()` for a hard PHP-level timeout
+
+### P2-115 — Document Local Variable Case Normalization in data= Docs (KI-114)
+
+**Priority:** LOW (prevents user confusion)
+**Effort:** Trivial
+
+`wiki/Parser-Functions.md` documents that the DB column name is case-insensitive but does not mention that the local variable name is also lowercased.
+
+**Tasks:**
+
+1. Add to the `data=` parameter docs: "Both the local variable name and the DB column name are normalized to lowercase internally. Use lowercase `{{{variablename}}}` placeholders in `#for_odbc_table` and `#display_odbc_table` templates."
+2. Update the inline example at line ~60 to use lowercase local names
+
+---
+
 ## Documentation Improvements (Ongoing)
 
 The following documentation improvements should be addressed in the next release regardless of version:
@@ -2166,6 +2235,11 @@ The following documentation improvements should be addressed in the next release
 | P2-108 Fix PHPStan 4 errors (KI-107) | v1.5.x | ✅ Done | MEDIUM | Trivial | CI — static analysis failures |
 | P2-109 Remove PHP 8.1 from test matrix (KI-108) | v1.5.x | ✅ Done | LOW | Trivial | CI — composer.lock requires PHP ≥8.2 |
 | P2-110 Remove duplicate phpunit CI job (KI-109) | v1.5.x | ✅ Done | LOW | Trivial | CI — redundant job |
+| P2-111 Fix worked example case mismatch (KI-110) | v1.5.x-docs | ✅ Done | MEDIUM | Trivial | Broken user-visible example |
+| P2-112 Remove stale KI-028 warning from Configuration.md (KI-111) | v1.5.x-docs | ✅ Done | MEDIUM | Trivial | Operator misguidance |
+| P2-113 Apply full wikitext escaping in forOdbcTable() (KI-112) | v1.5.x | ✅ Done | LOW | Trivial | Edge-case wikitext corruption |
+| P2-114 Document metadata timeout limitation (KI-113) | v1.5.x-docs | ✅ Done | LOW | Trivial | Admin awareness |
+| P2-115 Document local variable case normalization (KI-114) | v1.5.x-docs | ✅ Done | LOW | Trivial | Prevents user confusion |
 | P3-001 Service container | v2.0.0 | Open | HIGH | Large | Architecture |
 | P3-002 Interfaces | v2.0.0 | Open | MEDIUM | Moderate | Testability |
 | P3-003 Unit test suite | v2.0.0 | ⚠️ Partial | HIGH | Large | Quality assurance (3 test files exist) |

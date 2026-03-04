@@ -2028,3 +2028,213 @@ All prior CI runs (runs #1–#5) failed. Four root causes were identified and fi
 Also added `extensions: mbstring` to PHPCS and PHPStan CI jobs for explicit dependency declaration.
 
 **Result:** CI Run #6 — all jobs pass. First green CI in the repository's history.
+
+---
+
+## §12 — Review Pass 11: Independent Critical Audit (2026-03-XX)
+
+**Reviewer:** GitHub Copilot (Claude Opus 4.6)
+**Scope:** Full independent audit of the `main` branch at v1.5.0. Every PHP source file (8 files, ~2585 lines), all 3 unit test files, `tests/bootstrap.php`, `stubs/MediaWikiStubs.php`, `extension.json`, `ODBCMagic.php`, `phpstan.neon`, `phpunit.xml.dist`, `composer.json`, `.github/workflows/ci.yml`, all 14 wiki pages, `README.md`, `CHANGELOG.md`, `SECURITY.md`, `UPGRADE.md`, `KNOWN_ISSUES.md`, `improvement_plan.md`, and `codebase_review.md` were read line-by-line.
+
+**Methodology:** Complete re-read of every file in the repository. Cross-referenced all documentation claims against actual code behavior. Verified all existing KI/P2 status markers. Tested logical consistency across all documents and between code and docs. Focused on finding issues NOT already tracked in KI-001 through KI-109.
+
+---
+
+### 12.1 — Bugs & Logic Errors
+
+#### 12.1.1 `wiki/Parser-Functions.md` Worked Example Uses Mixed-Case Variable Names That Don't Match Lowercase Storage (KI-110)
+
+**File:** `wiki/Parser-Functions.md`, lines 330–370 (Worked Example section)
+**Severity:** Medium (Documentation bug — produces broken output)
+
+The worked example contains three distinct code sections that all use mixed-case `{{{VariableName}}}` references:
+
+**Template:EmployeeRow definition:**
+
+```wiki
+| {{{FirstName}}} {{{LastName}}} || {{{Department}}} || [{{{Email}}} email]
+```
+
+**`#display_odbc_table` usage** (calls Template:EmployeeRow):
+
+```wiki
+{{#display_odbc_table: template=EmployeeRow }}
+```
+
+**`#for_odbc_table` usage:**
+
+```wiki
+{{!}} {{{FirstName}}} {{{LastName}}} {{!}}{{!}} {{{Email}}}
+```
+
+All three are broken because `mergeResults()` (line 430 of `ODBCParserFunctions.php`) unconditionally lowercases all local variable names:
+
+```php
+$localVar = strtolower( $localVar );
+```
+
+Given the query `data=FirstName=FirstName,...`, the stored key is `firstname` (lowercase). Therefore:
+
+- **`#for_odbc_table`:** The `strtr()` map contains keys like `{{{firstname}}}`. The template text contains `{{{FirstName}}}`. These don't match → triple-brace placeholders render literally as `{{{FirstName}}}` in the wiki output.
+- **`#display_odbc_table`:** The generated wikitext is `{{EmployeeRow|firstname=Alice|...}}`. The template expects `{{{FirstName}}}`. MediaWiki template parameters are case-sensitive → parameter doesn't match → renders as blank or `{{{FirstName}}}`.
+
+**Impact:** Any user who copies the worked example verbatim gets visibly broken output. This is the most prominent, copy-paste-ready section of the parser functions documentation.
+
+**Fix:** Change all variable references in the worked example to lowercase:
+
+- Template definition: `{{{firstname}}} {{{lastname}}} || {{{department}}} || [{{{email}}} email]`
+- `#for_odbc_table`: `{{{firstname}}} {{{lastname}}} {{!}}{{!}} {{{email}}}`
+- `data=` parameter: `data=firstname=FirstName,lastname=LastName,department=Department,email=Email` (lowercase local var names for clarity)
+
+---
+
+#### 12.1.2 `wiki/Configuration.md` Contains Stale KI-028 Warning — Gives Incorrect Configuration Advice (KI-111)
+
+**File:** `wiki/Configuration.md`, line 254
+**Severity:** Medium (Documentation contradicts code — operator misguidance)
+
+The file contains:
+
+> **Known issue (KI-028):** Only the exact boolean `false` disables integration. Integer `0`, `null`, and empty string `''` are not treated as disabling values. Always use `false` (not `0`).
+
+This was **fixed in v1.1.0** (P2-022). The check in `ODBCHooks::registerExternalDataConnector()` was changed from `=== false` to `!$wgODBCExternalDataIntegration`, meaning any falsy value (`false`, `0`, `null`, `''`) now correctly disables integration.
+
+The equivalent warning was corrected in `wiki/External-Data-Integration.md` by P2-101 (KI-100), but this instance in `wiki/Configuration.md` was missed.
+
+**Impact:** Operators reading the authoritative configuration reference are told to use only `false`, when in reality any falsy value works correctly since v1.1.0. This creates unnecessary confusion and may lead them to "fix" working configurations.
+
+**Fix:** Replace the warning block with a corrected note: "Any falsy value (`false`, `0`, `null`, `''`) disables External Data integration (fixed in v1.1.0)."
+
+---
+
+### 12.2 — Code Quality
+
+#### 12.2.1 `forOdbcTable()` Does Not Escape `}}` or `|` in Database Values (KI-112)
+
+**File:** `includes/ODBCParserFunctions.php`, `forOdbcTable()`, lines 300–320
+**Severity:** Low (Edge-case data corruption in nested wikitext contexts)
+
+The `forOdbcTable()` method escapes only `{{{` in database values:
+
+```php
+$escapedValue = str_replace( '{{{', '&#123;&#123;&#123;', $value );
+$map['{{{' . $varName . '}}}'] = $escapedValue;
+```
+
+In contrast, `displayOdbcTable()` uses the comprehensive `escapeTemplateParam()` function which also escapes `|` → `{{!}}` and `}}` → `&#125;&#125;`.
+
+**Scenarios where this matters:**
+
+1. **`}}` in a value:** If `#for_odbc_table` output is nested inside a template call (e.g., `{{MyWrapper|content={{#for_odbc_table:...}}}}`), a database value containing `}}` could prematurely close the outer template.
+
+2. **`|` in a value:** If `#for_odbc_table` output is used as a template parameter, pipe characters in values would be interpreted as parameter separators. Even the docs acknowledge this: the "Tip" at line 204 recommends `{{!}}` for literal pipes, but this advice applies to the *template text*, not the *substituted values*.
+
+**Impact:** Low in typical usage where `#for_odbc_table` output is at the top level of wikitext. Higher when the output is nested inside template calls — particularly relevant for dashboard pages that wrap ODBC output in layout templates.
+
+**Fix:** Apply `escapeTemplateParam()` to the value before inserting it into the template text:
+
+```php
+$escapedValue = self::escapeTemplateParam( $value );
+$map['{{{' . $varName . '}}}'] = $escapedValue;
+```
+
+This brings `forOdbcTable()` to the same level of escaping safety as `displayOdbcTable()`.
+
+---
+
+#### 12.2.2 `getTableColumns()` and `getTables()` Have No Timeout Protection (KI-113)
+
+**File:** `includes/ODBCQueryRunner.php`, `getTableColumns()` (lines 564–600) and `getTables()` (lines 605–640)
+**Severity:** Low (Admin-only operations; no user-facing impact)
+
+Both methods call ODBC metadata functions (`odbc_columns()`, `odbc_tables()`) directly without any `odbc_setoption()` timeout. In contrast, `executeRawQuery()` applies per-statement timeouts via `odbc_setoption( $stmt, SQL_HANDLE_STMT, SQL_QUERY_TIMEOUT, $timeout )`.
+
+If the ODBC driver or remote database is unresponsive, these metadata calls will block the PHP-FPM worker indefinitely. Since these are only callable via `Special:ODBCAdmin` (requires `odbc-admin` permission), the blast radius is limited to administrator sessions.
+
+**Fix:** Wrap the metadata calls in a timeout-protected pattern. Since `odbc_columns()` and `odbc_tables()` return result resources (not statement handles), standard `odbc_setoption()` cannot be applied. Options:
+
+1. Set a PHP-level `max_execution_time` or `pcntl_alarm()` around the calls.
+2. Document the limitation and recommend that administrators use the separate connectivity test action first to verify the source is responsive before browsing tables.
+
+---
+
+### 12.3 — Documentation
+
+#### 12.3.1 `wiki/Parser-Functions.md` `data=` Mapping Case Behavior Underdocumented (KI-114)
+
+**File:** `wiki/Parser-Functions.md`, lines 56–64
+**Severity:** Low (Documentation gap — subtle usability trap)
+
+The documentation states at line 62:
+
+> "The mapping is case-insensitive for the DB column name (i.e., `FullName` matches a column named `fullname` or `FULLNAME`)."
+
+This describes only the right-hand side (DB column) case handling. It does not mention that the **left-hand side (local variable name)** is also lowercased by `mergeResults()`. A user who writes `data=Name=FullName` and then uses `{{{Name}}}` in `#for_odbc_table` will get blank output. Only `{{{name}}}` works.
+
+The `#odbc_value` function handles this gracefully (it lowercases the input), but `#for_odbc_table` and `#display_odbc_table` do not — they use the stored (lowercase) keys directly.
+
+**Fix:** Amend the `data=` documentation to explicitly state:
+
+> "Both the local variable name and the DB column name are case-insensitive — they are normalized to lowercase internally. Use lowercase `{{{variablename}}}` placeholders in `#for_odbc_table` and `#display_odbc_table` templates."
+
+---
+
+### 12.4 — Observations (Not New Issues)
+
+The following are confirmed observations about the codebase that are already tracked or are by-design:
+
+1. **KI-008 (SELECT * default):** Still open by design. Behavior is correct — `wfDebugLog()` entry is written. No code change needed.
+2. **KI-020 (ED standalone caching):** Still partially open. Standalone mode bypasses `ODBCQueryRunner::executeRawQuery()` and therefore doesn't get `$wgODBCCacheExpiry` caching. This is documented and deferred to v2.0.0.
+3. **PHPUnit coverage gap on PHP 7.4–8.1:** `composer.json` declares `"php": ">=7.4.0"` but the test matrix runs PHPUnit only on 8.2–8.4 (PHPUnit 11 requires ≥8.2). Syntax lint covers 7.4–8.4. This gap is a known compromise (KI-108) — expanding testing to PHPUnit 10 for 8.1 support would require maintaining separate lockfiles.
+4. **All-static `ODBCConnectionManager`:** No change since prior passes. Still the primary architecture debt (P3-001, v2.0.0). The class is ~444 lines of all-static methods with static properties, making it untestable without PowerMock-style reflection hacks.
+5. **No PHP namespaces:** All 6 classes are in the global namespace. Tracked as §3.6 / P3-002.
+6. **`ODBCParserFunctions::odbcQuery()` calls `getMainConfig()` separately from `ODBCQueryRunner` constructor:** Two `MediaWikiServices::getInstance()->getMainConfig()` calls per `#odbc_query` invocation. Each is cached at the service-locator level so the overhead is negligible, but it reflects the static-class design that P3-001 would eliminate.
+
+---
+
+### Review Pass 11 Summary Scorecard
+
+| Category | New Issues | KI Numbers |
+| -------- | ---------- | ---------- |
+| Documentation bugs (broken output) | 1 | KI-110 (worked example case mismatch) |
+| Documentation contradicts code | 1 | KI-111 (Configuration.md stale KI-028 warning) |
+| Code quality (escaping gap) | 1 | KI-112 (`forOdbcTable` incomplete value escaping) |
+| Functional gap (admin timeout) | 1 | KI-113 (metadata operations no timeout) |
+| Documentation gap | 1 | KI-114 (`data=` case normalization underdocumented) |
+| **Total new issues this pass** | **5 (KI-110 through KI-114)** | |
+| **Cumulative total** | **114 tracked** | |
+
+**Overall Assessment (Review Pass 11):**
+
+The PHP source code is in excellent condition. After 10 review passes and 109 tracked issues, the core extension logic — sanitizer, connection manager, query runner, parser functions — is robust, well-documented in code, and backed by 3 unit test files with ~70 assertions. The CI pipeline (lint, PHPCS, PHPStan, PHPUnit) runs on every push and is green.
+
+The 5 new findings in this pass are all low-to-medium severity:
+
+- **KI-110 is the most impactful:** The worked example is the first thing a new user copies, and it produces broken output due to case mismatch between `data=` mapping names and `{{{...}}}` placeholder references. This is a straightforward documentation fix.
+- **KI-111** is a stale warning that was missed when its sister warning in a different wiki page was corrected. Simple text replacement.
+- **KI-112** is an edge-case escaping gap in `forOdbcTable()` that only matters when the output is nested inside template calls. The fix is a one-line change.
+- **KI-113** is a known architectural limitation of ODBC metadata functions that don't support per-statement timeouts. Documentation may be the best remediation.
+- **KI-114** is a documentation clarification that would prevent the same class of error seen in KI-110.
+
+The extension's primary remaining debts are architectural (P3-001 service container, P3-002 interfaces, P3-006 parameterized WHERE) and are properly scoped to v2.0.0. For v1.5.x, the codebase is production-ready with comprehensive security layering, good error handling, and a mature diagnostic logging infrastructure.
+
+### Implementation Status (Review Pass 11)
+
+All 5 issues identified in this pass have been resolved:
+
+| KI | Fix | Status |
+| -------- | ---------- | ---------- |
+| KI-110 | P2-111 — Worked example changed to lowercase variables; note added | ✅ Done |
+| KI-111 | P2-112 — Stale KI-028 warning replaced with corrected note | ✅ Done |
+| KI-112 | P2-113 — `forOdbcTable()` now uses `escapeTemplateParam()` | ✅ Done |
+| KI-113 | P2-114 — Timeout limitation documented in Special-ODBCAdmin wiki | ✅ Done |
+| KI-114 | P2-115 — Case normalization explicitly documented in data= section | ✅ Done |
+
+**Files modified:**
+
+- `includes/ODBCParserFunctions.php` — `forOdbcTable()` escaping upgraded (KI-112)
+- `tests/unit/ODBCParserFunctionsTest.php` — Added 2 new tests for combined escaping scenarios
+- `wiki/Parser-Functions.md` — Worked example fixed (KI-110), case normalization documented (KI-114), `#display_odbc_table` How It Works note updated
+- `wiki/Configuration.md` — Stale KI-028 warning replaced (KI-111)
+- `wiki/Special-ODBCAdmin.md` — Metadata timeout limitation noted (KI-113)
+- `CHANGELOG.md` — 5 entries added under Fixed and Documentation sections

@@ -1917,4 +1917,151 @@ The CI workflow contained both a `test` job (matrix: PHP 8.1–8.4) and a separa
 
 ---
 
-*Last updated: v1.5.0 (2026-03-09) — KI-106 through KI-109 identified and resolved (CI pipeline fixes). 109 total issues tracked; 108 fully resolved; 1 remains open by design (KI-008 SELECT\* default). KI-020 (ED standalone caching) partially resolved. CI now passes (first green run: commit 888c8fa).*
+## KI-110 — `wiki/Parser-Functions.md` Worked Example Produces Broken Output (Case Mismatch)
+
+**Severity:** Medium (Documentation bug — broken user-visible example)
+**File:** `wiki/Parser-Functions.md`, lines 330–370 (Worked Example section)
+**Status:** ✅ Fixed in v1.5.0 (P2-111)
+
+**Description:**
+The worked example in the "Worked Example" section of `Parser-Functions.md` uses mixed-case variable names in three places:
+
+1. **Template:EmployeeRow** definition uses `{{{FirstName}}}`, `{{{LastName}}}`, `{{{Department}}}`, `{{{Email}}}`
+2. **`#display_odbc_table`** generates template calls with lowercase keys (e.g., `{{EmployeeRow|firstname=Alice|...}}`) because `mergeResults()` lowercases all stored variable names
+3. **`#for_odbc_table`** body references `{{{FirstName}}}`, `{{{LastName}}}`, `{{{Email}}}` which don't match the lowercase keys `{{{firstname}}}`, `{{{lastname}}}`, `{{{email}}}` in the `strtr()` substitution map
+
+The root cause is that `mergeResults()` in `ODBCParserFunctions.php` unconditionally lowercases all local variable names:
+
+```php
+$localVar = strtolower( $localVar );
+```
+
+Since MediaWiki template parameters are case-sensitive, the mixed-case references in the worked example don't match the lowercase stored data. The result is that placeholders like `{{{FirstName}}}` render literally in the output rather than being replaced with database values.
+
+**Impact:** High for new users. The worked example is the most prominent, copy-paste-ready section of the parser functions documentation. Anyone following it gets broken output.
+
+**Workaround:** Use lowercase variable names in template definitions and `#for_odbc_table` bodies: `{{{firstname}}}`, `{{{lastname}}}`, etc.
+
+**Fix:** Update all variable references in the worked example to lowercase. Change `data=FirstName=FirstName,...` to `data=firstname=FirstName,...` and all template/for_odbc_table references to lowercase.
+
+---
+
+## KI-111 — `wiki/Configuration.md` Contains Stale KI-028 Warning
+
+**Severity:** Medium (Documentation contradicts code — incorrect advice)
+**File:** `wiki/Configuration.md`, line 254
+**Status:** ✅ Fixed in v1.5.0 (P2-112)
+
+**Description:**
+The Configuration wiki page contains a warning block:
+
+> **Known issue (KI-028):** Only the exact boolean `false` disables integration. Integer `0`, `null`, and empty string `''` are not treated as disabling values. Always use `false` (not `0`).
+
+This issue (KI-028) was fixed in v1.1.0 (improvement plan item P2-022). The check in `ODBCHooks::registerExternalDataConnector()` was changed from `=== false` (strict identity) to `!$wgODBCExternalDataIntegration` (truthiness), meaning any falsy value now correctly disables External Data integration.
+
+The equivalent stale warning was already corrected in `wiki/External-Data-Integration.md` by KI-100/P2-101, but this second instance in `wiki/Configuration.md` was missed during that documentation sweep.
+
+**Impact:** Operators reading the authoritative configuration reference are given incorrect advice. They are told only `false` works, when in reality any falsy value (`false`, `0`, `null`, `''`) has worked correctly since v1.1.0.
+
+**Workaround:** None needed — any falsy value already works correctly in code.
+
+**Fix:** Replace the warning block with a corrected note: "Any falsy value (`false`, `0`, `null`, `''`) disables External Data integration (corrected in v1.1.0)." Or remove the warning entirely since it describes a non-issue.
+
+---
+
+## KI-112 — `forOdbcTable()` Does Not Escape `}}` or `|` in Database Values
+
+**Severity:** Low (Edge-case wikitext corruption in nested contexts)
+**File:** `includes/ODBCParserFunctions.php`, `forOdbcTable()` method
+**Status:** ✅ Fixed in v1.5.0 (P2-113)
+
+**Description:**
+The `forOdbcTable()` method only escapes `{{{` sequences in database values before substituting them into the template text:
+
+```php
+$escapedValue = str_replace( '{{{', '&#123;&#123;&#123;', $value );
+$map['{{{' . $varName . '}}}'] = $escapedValue;
+```
+
+In contrast, `displayOdbcTable()` uses the comprehensive `escapeTemplateParam()` helper which escapes three dangerous sequences:
+
+- `|` → `{{!}}` (pipe — template parameter separator)
+- `}}` → `&#125;&#125;` (double-close — can close outer templates)
+- `{{{` → `&#123;&#123;&#123;` (triple-open — can open false parameter references)
+
+If `#for_odbc_table` output is used inside a template call (e.g., `{{MyLayout|content={{#for_odbc_table:...}}}}`), a database value containing `}}` could prematurely close `{{MyLayout`, and a value containing `|` could be interpreted as a parameter separator.
+
+**Impact:** Low for typical standalone usage. Higher for dashboard-style pages that wrap ODBC output in layout templates.
+
+**Workaround:** Avoid nesting `#for_odbc_table` output inside template parameters, or sanitize database values at the SQL level.
+
+**Fix:** Replace the single `str_replace` call with the existing `escapeTemplateParam()` helper:
+
+```php
+$escapedValue = self::escapeTemplateParam( $value );
+$map['{{{' . $varName . '}}}'] = $escapedValue;
+```
+
+---
+
+## KI-113 — `getTableColumns()` and `getTables()` Have No Timeout Protection
+
+**Severity:** Low (Admin-only functionality)
+**File:** `includes/ODBCQueryRunner.php`, `getTableColumns()` and `getTables()` methods
+**Status:** ✅ Documented in v1.5.0 (P2-114)
+
+**Description:**
+The `getTableColumns()` and `getTables()` methods call ODBC metadata functions (`odbc_columns()` and `odbc_tables()`) directly on the connection resource without setting a query timeout via `odbc_setoption()`.
+
+All regular query execution paths in `executeRawQuery()` apply per-statement timeouts:
+
+```php
+odbc_setoption( $stmt, 2, 0, $timeout );  // SQL_HANDLE_STMT, SQL_QUERY_TIMEOUT
+```
+
+However, `odbc_columns()` and `odbc_tables()` return result resources directly (not statement handles), so the standard `odbc_setoption()` approach cannot be applied to them.
+
+If the ODBC driver or the remote database is unresponsive, these metadata calls will block the PHP-FPM worker indefinitely until `max_execution_time` fires (if set) or the process is killed.
+
+**Impact:** Limited — these methods are only callable via `Special:ODBCAdmin` which requires the `odbc-admin` permission. However, an administrator examining a flaky data source could hang their browser session and consume a PHP-FPM worker slot.
+
+**Workaround:** Use the "Test Connection" action in Special:ODBCAdmin first to verify the source is responsive before browsing tables or columns.
+
+**Fix:** Possible approaches:
+
+1. Set PHP-level `set_time_limit()` around the metadata calls to provide a hard timeout.
+2. Document the limitation in the Special:ODBCAdmin wiki page.
+3. Accept as a Known Limitation for v1.x and address via async architecture in v2.0.0.
+
+---
+
+## KI-114 — `wiki/Parser-Functions.md` `data=` Mapping Does Not Document Local Variable Case Normalization
+
+**Severity:** Low (Documentation gap — subtle usability trap)
+**File:** `wiki/Parser-Functions.md`, lines 56–64
+**Status:** ✅ Fixed in v1.5.0 (P2-115)
+
+**Description:**
+The `data=` parameter documentation states:
+
+> "The mapping is case-insensitive for the DB column name (i.e., `FullName` matches a column named `fullname` or `FULLNAME`)."
+
+This accurately describes the right-hand side (DB column) case handling. However, it does not mention that the **left-hand side (local variable name)** is also lowercased by `mergeResults()`. The code is:
+
+```php
+$localVar = strtolower( $localVar );
+```
+
+A user who writes `data=Name=FullName` and then references `{{{Name}}}` in `#for_odbc_table` will get blank output because only `{{{name}}}` matches the stored (lowercase) key.
+
+The `#odbc_value` function handles this gracefully (it lowercases the input variable name before lookup), but `#for_odbc_table` and `#display_odbc_table` use the stored keys directly with no case folding on the template side.
+
+**Impact:** Low urgency but causes confusion for users who choose mixed-case or CamelCase local variable names — which the documentation implicitly encourages by not warning against it, and which the worked example (KI-110) actively demonstrates.
+
+**Workaround:** Always use lowercase local variable names in `data=` mappings.
+
+**Fix:** Amend the `data=` documentation to explicitly state: "Both the local variable name and the DB column name are normalized to lowercase internally. Use lowercase `{{{variablename}}}` placeholders in `#for_odbc_table` and `#display_odbc_table` templates."
+
+---
+
+*Last updated: v1.5.0 (2026-03-04) — Review Pass 11 identified and resolved KI-110 through KI-114 (5 issues). 114 total issues tracked; 113 fully resolved; 1 remains open by design (KI-008 SELECT\* default). KI-020 (ED standalone caching) partially resolved. CI passing (first green run: commit 888c8fa).*
