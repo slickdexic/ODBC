@@ -60,6 +60,7 @@ data=name=FullName,dept=DepartmentName,salary=Salary
 
 - `name`, `dept`, and `salary` become the variable names used in `{{{name}}}`, `{{{dept}}}`, `{{{salary}}}` within `#for_odbc_table` or `#display_odbc_table`.
 - The mapping is case-insensitive for the DB column name (i.e., `FullName` matches a column named `fullname` or `FULLNAME`).
+- **Both the local variable name and the DB column name are normalized to lowercase internally.** Use lowercase `{{{variablename}}}` placeholders in `#for_odbc_table` and `#display_odbc_table` templates. For example, `data=Name=FullName` stores under `name` — only `{{{name}}}` will match, not `{{{Name}}}`.
 - Mappings longer than 256 characters are silently dropped. Keep mapping names short.
 - Stored values always contain all rows; `#odbc_value` returns the first row by default, or a specific row when a row selector is given (see `#odbc_value` below).
 
@@ -228,7 +229,7 @@ For each row in the stored result, the extension calls:
 {{TemplateName | localVar1=value1 | localVar2=value2 | ... }}
 ```
 
-The template at `Template:TemplateName` accesses values with `{{{localVar1}}}`, `{{{localVar2}}}`, etc.
+The template at `Template:TemplateName` accesses values with `{{{localvar1}}}`, `{{{localvar2}}}`, etc. (always lowercase — the extension normalizes all stored variable names to lowercase).
 
 ### Example
 
@@ -328,8 +329,10 @@ $wgODBCSources['hr'] = [
 **Template:EmployeeRow** (`Template:EmployeeRow`):
 ```wiki
 |-
-| {{{FirstName}}} {{{LastName}}} || {{{Department}}} || [{{{Email}}} email]
+| {{{firstname}}} {{{lastname}}} || {{{department}}} || [{{{email}}} email]
 ```
+
+> **Note:** Template parameter names must be **lowercase** because the ODBC extension normalizes all stored variable names to lowercase internally. `{{{FirstName}}}` will not match — use `{{{firstname}}}`.
 
 **Wiki page:**
 ```wiki
@@ -337,7 +340,7 @@ $wgODBCSources['hr'] = [
 
 {{#odbc_query: source=hr
  | query=all_employees
- | data=FirstName=FirstName,LastName=LastName,Department=Department,Email=Email
+ | data=firstname=FirstName,lastname=LastName,department=Department,email=Email
 }}
 
 {| class="wikitable sortable"
@@ -352,16 +355,16 @@ $wgODBCSources['hr'] = [
 {{#odbc_query: source=hr
  | query=dept_employees
  | parameters=Engineering
- | data=FirstName=FirstName,LastName=LastName,Department=Department,Email=Email
+ | data=firstname=FirstName,lastname=LastName,department=Department,email=Email
 }}
 
-Total engineers: '''{{#odbc_value: FirstName | (none)}}'''
+Total engineers: '''{{#odbc_value: firstname | (none)}}'''
 
 {| class="wikitable"
 ! Name !! Email
 {{#for_odbc_table:
 {{!}}-
-{{!}} {{{FirstName}}} {{{LastName}}} {{!}}{{!}} {{{Email}}}
+{{!}} {{{firstname}}} {{{lastname}}} {{!}}{{!}} {{{email}}}
 }}
 |}
 

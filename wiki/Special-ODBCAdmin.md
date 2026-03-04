@@ -52,6 +52,8 @@ Click **Browse Tables** to list all tables (and views) visible to the configured
 
 The list comes from the ODBC metadata function `odbc_tables()`, which returns tables accessible to the connection. The list respects the database user's permissions — tables the user cannot access may not appear.
 
+> **Known limitation:** The Browse Tables and Browse Columns actions use ODBC metadata functions that do not support per-statement query timeouts. If the database or driver is unresponsive, the request may hang until PHP's `max_execution_time` fires. Use **Test Connection** first to verify the source is reachable before browsing tables.
+
 ---
 
 ### Browse Columns

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **P2-113 — `forOdbcTable()` now applies full wikitext escaping to database values** — Previously, only `{{{` sequences were escaped, while `|` (pipe) and `}}` (template-close) in database values were passed through raw. When `#for_odbc_table` output was nested inside template calls, these characters could corrupt wikitext. Now uses the same `escapeTemplateParam()` helper as `displayOdbcTable()`, bringing both display functions to the same level of escaping safety. (KI-112)
 - **P2-095 — `escapeTemplateParam()` pipe character garbling fixed** — Sequential `str_replace()` caused `|` → `{{!}}` → `{{!&#125;&#125;` because the `}}` inside `{{!}}` was caught by the second replacement. Replaced with `strtr()` for simultaneous replacement. Pipe characters in database values now render correctly via `{{#display_odbc_table:}}`. (KI-094)
 - **P2-105 — Test assertion for pipe escaping corrected** — `testEscapeTemplateParamPipe()` previously asserted the garbled output `A{{!&#125;&#125;B` as expected. Updated to assert the correct output `A{{!}}B`. (KI-104)
 - **P2-106 — `MWException` inheritance in PHPStan stubs corrected** — `stubs/MediaWikiStubs.php` declared `MWException extends RuntimeException` but MediaWiki core uses `extends Exception`. Fixed to match core. Stubs file also restructured with a proper `namespace {}` block to fix a PHP syntax error with mixed global/namespaced code. (KI-105)
@@ -62,6 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P2-101 — `wiki/External-Data-Integration.md` 3 stale warnings corrected** — KI-027 workaround removed (fixed in v1.1.0); feature parity table updated for caching and UTF-8 via `odbc_source`; KI-028 warning corrected (any falsy value now works since v1.1.0). (KI-100)
 - **P2-102 — `wiki/Security.md` blocklist table updated** — Added `CAST(` and `CONVERT(` patterns (present in code since P2-089 but missing from documentation). (KI-101)
 - **P2-103 — `wiki/Parser-Functions.md` worked example variable fixed** — Replaced `first_count` (non-existent variable) with `FirstName` from the query's mapped columns. (KI-102)
+- **P2-111 — `wiki/Parser-Functions.md` worked example case mismatch fixed** — The worked example used mixed-case `{{{FirstName}}}` / `{{{LastName}}}` in templates and `#for_odbc_table`, but `mergeResults()` normalizes all variable names to lowercase. Copying the example verbatim produced broken output. All variable references changed to lowercase (`{{{firstname}}}`, `{{{lastname}}}`, etc.) and a note added explaining that template parameters must be lowercase. (KI-110)
+- **P2-112 — `wiki/Configuration.md` stale KI-028 warning removed** — A warning block stated "only the exact boolean `false` disables integration" — fixed in code since v1.1.0 (P2-022). The equivalent warning was corrected in `wiki/External-Data-Integration.md` (P2-101) but this instance was missed. Replaced with a note confirming any falsy value works. (KI-111)
+- **P2-114 — `wiki/Special-ODBCAdmin.md` metadata timeout limitation documented** — Added a note to the Browse Tables section warning that ODBC metadata operations do not support per-statement timeouts and may hang if the source is unresponsive. Recommends using Test Connection first. (KI-113)
+- **P2-115 — `wiki/Parser-Functions.md` `data=` case normalization documented** — The docs stated that DB column names are case-insensitive but did not mention that local variable names are also lowercased. Added explicit note: "Both the local variable name and the DB column name are normalized to lowercase internally." (KI-114)
 
 ---
 

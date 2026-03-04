@@ -251,7 +251,7 @@ $wgODBCExternalDataIntegration = false;
 wfLoadExtension( 'ODBC' );
 ```
 
-> **Known issue (KI-028):** Only the exact boolean `false` disables integration. Integer `0`, `null`, and empty string `''` are not treated as disabling values. Always use `false` (not `0`).
+> **Note:** Any falsy value (`false`, `0`, `null`, `''`) disables External Data integration. This was corrected in v1.1.0 — you are not required to use the exact boolean `false`.
 
 ---
 
