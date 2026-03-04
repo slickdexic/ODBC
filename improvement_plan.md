@@ -1963,22 +1963,33 @@ Implement these interfaces in the real classes and use them as type hints throug
 
 **Priority:** HIGH (architectural)
 **Effort:** Large
-**Files:** New `tests/` directory tree
+**Files:** `tests/` directory tree
+**Status:** ⚠️ Substantial — 242 tests across 3 files; all pure-logic static methods fully covered
 
-Implement tests covering:
+**Completed (v1.5.x):**
 
-- `ODBCConnectionManager::buildConnectionString()` — all DSN modes
-- `ODBCQueryRunner::sanitize()` — all patterns (both allowed and blocked)
-- `ODBCQueryRunner::validateIdentifier()` — valid and invalid identifiers
-- `ODBCQueryRunner::requiresTopSyntax()` — all driver name variants
+- ✅ `ODBCConnectionManager::buildConnectionString()` — 20 tests covering all DSN modes, semicolons, braces, port, trust cert, dsn_params, precedence
+- ✅ `ODBCConnectionManager::validateConfig()` — 11 tests covering all valid/invalid configurations
+- ✅ `ODBCConnectionManager::withOdbcWarnings()` — 6 tests covering return value, handler restoration, exception propagation
+- ✅ `ODBCConnectionManager::sanitizeErrorMessage()` — 4 tests via reflection covering credential redaction
+- ✅ `ODBCQueryRunner::sanitize()` — 87 tests covering all 40+ blocklist keywords, case variations, whitespace/newline/null-byte evasion, 22 false-positive guards, error message validation
+- ✅ `ODBCQueryRunner::validateIdentifier()` — 19 tests covering valid/invalid identifiers, boundary lengths, error messages
+- ✅ `ODBCQueryRunner::getRowLimitStyle()` — 20 tests covering all known driver name patterns (SQL Server, Access, Sybase, Progress, MySQL, PostgreSQL, SQLite, Oracle, MariaDB, IBM DB2, FreeTDS)
+- ✅ `ODBCQueryRunner::requiresTopSyntax()` — 3 tests confirming deprecated wrapper
+- ✅ `ODBCParserFunctions::parseDataMappings()` — 12 tests covering single/multiple/mixed/unmapped mappings, length limits, whitespace trimming, empty names
+- ✅ `ODBCParserFunctions::mergeResults()` — 14 tests covering mappings, no-mappings, null handling, missing columns, case-insensitive lookup, append, multi-call accumulation, numeric conversion
+- ✅ `ODBCParserFunctions::parseSimpleArgs()` — 8 tests covering named/positional params, equals in values, empty values
+- ✅ `ODBCParserFunctions::escapeTemplateParam()` — 10 tests covering pipes, braces, triple-braces, combined sequences, empty string, wiki markup preservation
+- ✅ `ODBCParserFunctions::formatError()` — 5 tests covering HTML escaping, empty messages
+- ✅ PHPUnit config (`phpunit.xml.dist`), Composer dev dependencies, CI workflow — all in place
+
+**Remaining (v2.0.0 — requires service container from P3-001):**
+
 - `ODBCQueryRunner::executeRawQuery()` — with mock ODBC connection
-- `ODBCParserFunctions::parseDataMappings()` — all edge cases
-- `ODBCParserFunctions::mergeResults()` — multi-row, multi-mapping
-- `ODBCParserFunctions::escapeTemplateParam()` — injection prevention
+- `ODBCQueryRunner::executeComposed()` / `executePrepared()` — integration tests
 - `SpecialODBCAdmin` — action routing, permission checks, SELECT enforcement
+- `ODBCParserFunctions::odbcQuery()` / `odbcValue()` / `forOdbcTable()` / `displayOdbcTable()` — with mock Parser
 - Magic word registration — verify all five words resolve correctly
-
-Add `phpunit.xml`, `composer.json` `require-dev` section (PHPUnit 9/10, mediawiki/mediawiki-codesniffer), and a GitHub Actions workflow.
 
 ---
 
@@ -2242,7 +2253,7 @@ The following documentation improvements should be addressed in the next release
 | P2-115 Document local variable case normalization (KI-114) | v1.5.x-docs | ✅ Done | LOW | Trivial | Prevents user confusion |
 | P3-001 Service container | v2.0.0 | Open | HIGH | Large | Architecture |
 | P3-002 Interfaces | v2.0.0 | Open | MEDIUM | Moderate | Testability |
-| P3-003 Unit test suite | v2.0.0 | ⚠️ Partial | HIGH | Large | Quality assurance (3 test files exist) |
+| P3-003 Unit test suite | v2.0.0 | ⚠️ Substantial | HIGH | Large | Quality assurance (242 tests, 3 files — pure-logic methods fully covered) |
 | P3-004 CI + code standards | v2.0.0 | ✅ Done | MEDIUM | Moderate | Quality assurance — CI fully green |
 | P3-006 Parameterized WHERE | v2.0.0 | Open | HIGH | Large | Security |
 
