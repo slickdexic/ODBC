@@ -16,6 +16,8 @@
 .vscode/            export-ignore
 codebase_review.md  export-ignore
 improvement_plan.md export-ignore
+KNOWN_ISSUES.md     export-ignore
+*.mediawiki         export-ignore
 phpstan.neon        export-ignore
 setup-dev.ps1       export-ignore
 stubs/              export-ignore
