@@ -2162,9 +2162,13 @@ The following documentation improvements should be addressed in the next release
 | P2-104 Add PHPUnit job to CI workflow (KI-103) | v1.5.x | ✅ Done | MEDIUM | Trivial | CI quality — tests exist but don't run |
 | P2-105 Fix escapeTemplateParam test assertion (KI-104) | v1.5.x | ✅ Done | LOW | Trivial | Test normalizes buggy behavior |
 | P2-106 Fix MWException inheritance in stubs (KI-105) | v1.5.x | ✅ Done | LOW | Trivial | Stubs/test consistency |
+| P2-107 Fix PHPCS exit-code-on-warnings (KI-106) | v1.5.x | ✅ Done | LOW | Trivial | CI — PHPCS returns 1 on warnings-only |
+| P2-108 Fix PHPStan 4 errors (KI-107) | v1.5.x | ✅ Done | MEDIUM | Trivial | CI — static analysis failures |
+| P2-109 Remove PHP 8.1 from test matrix (KI-108) | v1.5.x | ✅ Done | LOW | Trivial | CI — composer.lock requires PHP ≥8.2 |
+| P2-110 Remove duplicate phpunit CI job (KI-109) | v1.5.x | ✅ Done | LOW | Trivial | CI — redundant job |
 | P3-001 Service container | v2.0.0 | Open | HIGH | Large | Architecture |
 | P3-002 Interfaces | v2.0.0 | Open | MEDIUM | Moderate | Testability |
 | P3-003 Unit test suite | v2.0.0 | ⚠️ Partial | HIGH | Large | Quality assurance (3 test files exist) |
-| P3-004 CI + code standards | v2.0.0 | ⚠️ Partial | MEDIUM | Moderate | Quality assurance (.phpcs.xml + CI exist) |
+| P3-004 CI + code standards | v2.0.0 | ✅ Done | MEDIUM | Moderate | Quality assurance — CI fully green |
 | P3-006 Parameterized WHERE | v2.0.0 | Open | HIGH | Large | Security |
 
