@@ -1,0 +1,347 @@
+{{Extension
+|name            = ODBC
+|status          = stable
+|type1           = parser function
+|type2           = special
+|author          = [[User:Pvodrazka|Paul Vodrazka]]
+|version         = 1.5.0
+|update          = 2026-03-03
+|download        = {{GithubDownload|slickdexic|ODBC}}
+|readme          = [https://github.com/slickdexic/ODBC/blob/main/README.md README]
+|changelog       = [https://github.com/slickdexic/ODBC/blob/main/CHANGELOG.md CHANGELOG]
+|license         = GPL-2.0-or-later
+|tags            = {{bulleted list|{{tag|database|o}}|{{tag|ODBC|o}}|{{tag|SQL|o}}|{{tag|data integration|o}}|{{tag|parser function|o}}|{{tag|external data|o}}}}
+|mediawiki       = >= 1.39.0
+|php             = >= 7.4.0
+|needs-updatephp = no
+|rights          = {{bulleted list|odbc-query|odbc-admin}}
+|parameters      = {{bulleted list|$wgODBCSources|$wgODBCAllowArbitraryQueries|$wgODBCMaxRows|$wgODBCQueryTimeout|$wgODBCCacheExpiry|$wgODBCExternalDataIntegration|$wgODBCMaxQueriesPerPage|$wgODBCSlowQueryThreshold|$wgODBCMaxConnections}}
+|hook1           = ExtensionRegistration
+|hook2           = ParserFirstCallInit
+|composer        = (not on Packagist)
+|description     = Generic ODBC database connectivity for MediaWiki. Query any ODBC-accessible database directly from wiki pages using five parser functions, with prepared statement support, SQL injection protection, an admin interface for connection testing and table browsing, optional result caching, and seamless integration with the [[Extension:External Data|External Data]] extension.
+}}
+
+The '''ODBC''' extension provides generic ODBC database connectivity for MediaWiki. It enables wiki editors to query any database that has an ODBC driver — including Microsoft SQL Server, MySQL, PostgreSQL, Oracle, IBM DB2, Microsoft Access, SQLite, SAP HANA, Snowflake, and Amazon Redshift — directly from wiki pages using parser functions.
+
+All queries are executed read-only, with multi-layered SQL injection protection. Results are stored in page-scoped variables and rendered using inline wikitext templates or wiki templates.
+
+== Why ODBC? ==
+* '''Universal Database Access:''' One extension connects MediaWiki to any ODBC-accessible database — no vendor-specific extensions required.
+* '''Secure by Default:''' Prepared statements, SQL pattern blocklists, identifier validation, and read-only enforcement prevent SQL injection by design.
+* '''Flexible:''' Five parser functions cover single-value lookups, tabular display, and template-driven rendering.
+* '''External Data Compatible:''' Registers an <code>odbc_generic</code> connector for the [[Extension:External Data|External Data]] extension, extending its ecosystem to ODBC sources.
+
+== Use Cases ==
+{| class="wikitable"
+! Use Case !! Example !! Features Used
+|-
+| '''Business Dashboards''' || Display KPIs, sales figures, or inventory counts from a SQL Server data warehouse || <code>#odbc_query</code> with prepared statements, <code>#odbc_value</code> for single metrics
+|-
+| '''Employee Directories''' || Searchable staff listings from an HR database || Prepared statements with parameters, <code>#display_odbc_table</code> with a wiki template
+|-
+| '''Product Catalogues''' || Render product tables from a MySQL database || Composed queries, <code>#for_odbc_table</code> for inline wikitable rows
+|-
+| '''Report Archives''' || Surface historical data from a legacy Access or DB2 database || DSN-based connections, query caching for performance
+|-
+| '''IT Asset Tracking''' || List servers, licenses, or configurations from a CMDB || <code>Special:ODBCAdmin</code> for ad-hoc exploration, prepared statements for wiki pages
+|-
+| '''Data Integration''' || Combine ODBC data with other External Data sources (CSV, JSON, LDAP) || <code>odbc_generic</code> connector with the External Data extension
+|}
+
+== Installation ==
+{{ExtensionInstall
+|registration=required
+|download-link=[https://github.com/slickdexic/ODBC/archive/refs/heads/main.zip Download]
+|custom-steps=
+*Ensure the '''PHP ODBC extension''' (<code>ext-odbc</code>) is installed and enabled:
+**'''Windows:''' Usually included; enable <code>extension=php_odbc.dll</code> in <code>php.ini</code> if needed.
+**'''Linux (Debian/Ubuntu):''' <code>sudo apt install php-odbc</code>
+**'''Linux (RHEL/CentOS):''' <code>sudo yum install php-odbc</code>
+*Install an '''ODBC driver''' for your target database (e.g., [https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server Microsoft ODBC Driver for SQL Server], [https://dev.mysql.com/downloads/connector/odbc/ MySQL Connector/ODBC], [https://www.postgresql.org/ftp/odbc/versions/ PostgreSQL ODBC]).
+*Configure data sources in <code>[[Manual:LocalSettings.php|LocalSettings.php]]</code> (see [[#Configuration|Configuration]] below).
+*Developers running tests should run <code>composer install</code> within the <code>ODBC</code> directory.
+}}
+
+== Configuration ==
+
+=== Data Sources (<code>$wgODBCSources</code>) ===
+
+Each data source gets a unique ID key in <code>$wgODBCSources</code>. Three connection modes are supported:
+
+==== Mode 1 — System/User DSN ====
+<syntaxhighlight lang="php">
+$wgODBCSources['my-access-db'] = [
+    'dsn'      => 'MyAccessDSN',
+    'user'     => '',
+    'password' => '',
+];
+</syntaxhighlight>
+
+==== Mode 2 — Driver-based connection ====
+<syntaxhighlight lang="php">
+$wgODBCSources['sql-server'] = [
+    'driver'   => 'ODBC Driver 17 for SQL Server',
+    'server'   => 'localhost,1433',
+    'database' => 'MyDatabase',
+    'user'     => 'sa',
+    'password' => 'YourPassword123',
+    'trust_certificate' => true,
+];
+</syntaxhighlight>
+
+==== Mode 3 — Raw connection string ====
+<syntaxhighlight lang="php">
+$wgODBCSources['oracle-db'] = [
+    'connection_string' => 'Driver={Oracle in OraDB19Home1};DBQ=myserver:1521/myservice;',
+    'user'     => 'myuser',
+    'password' => 'mypass',
+];
+</syntaxhighlight>
+
+==== Prepared Statements (recommended) ====
+<syntaxhighlight lang="php">
+$wgODBCSources['employees'] = [
+    'driver'   => 'ODBC Driver 17 for SQL Server',
+    'server'   => 'hr-server.local,1433',
+    'database' => 'HumanResources',
+    'user'     => 'wiki_reader',
+    'password' => 'ReadOnly123',
+    'prepared' => [
+        'get_employee' => 'SELECT FirstName, LastName, Department FROM Employees WHERE EmployeeID = ?',
+        'dept_list'    => 'SELECT DISTINCT Department FROM Employees ORDER BY Department',
+        'search'       => 'SELECT FirstName, LastName, Title FROM Employees WHERE Department = ? AND Title LIKE ?',
+    ],
+];
+</syntaxhighlight>
+
+==== Per-Source Options ====
+{| class="wikitable"
+! Option !! Type !! Description
+|-
+| <code>timeout</code> || integer || Per-source query timeout in seconds (overrides <code>$wgODBCQueryTimeout</code>).
+|-
+| <code>allow_queries</code> || boolean || Allow composed (ad-hoc) queries for this source even when <code>$wgODBCAllowArbitraryQueries</code> is <code>false</code>. '''Use sparingly.'''
+|-
+| <code>charset</code> || string || Explicit encoding (e.g. <code>'ISO-8859-1'</code>). When set, encoding auto-detection is skipped for this source.
+|-
+| <code>dsn_params</code> || array || Extra key=value pairs appended to the driver connection string (e.g. <code>['Encrypt' => 'yes']</code>).
+|-
+| <code>trust_certificate</code> || boolean || Add <code>TrustServerCertificate=yes</code> for SQL Server with self-signed certificates.
+|-
+| <code>host</code> || string || ''Progress OpenEdge only.'' Alternative to <code>server</code>.
+|-
+| <code>db</code> || string || ''Progress OpenEdge only.'' Alternative to <code>database</code>.
+|-
+| <code>prepared</code> || array || Associative array of named prepared SQL statements: <code>'name' => 'SQL with ? placeholders'</code>.
+|}
+
+=== Global Parameters ===
+{| class="wikitable"
+! Variable !! Type !! Default !! Description
+|-
+| <code>$wgODBCSources</code> || array || <code>{}</code> || Associative array of ODBC data source configurations. Each key is a source ID.
+|-
+| <code>$wgODBCAllowArbitraryQueries</code> || boolean || <code>false</code> || If <code>true</code>, wiki editors with <code>odbc-query</code> permission can pass composed (ad-hoc) SQL. Keep <code>false</code> in production.
+|-
+| <code>$wgODBCMaxRows</code> || integer || <code>1000</code> || Maximum number of rows returned by any single ODBC query.
+|-
+| <code>$wgODBCQueryTimeout</code> || integer || <code>30</code> || Query timeout in seconds.
+|-
+| <code>$wgODBCCacheExpiry</code> || integer || <code>0</code> || Number of seconds to cache query results. <code>0</code> disables caching. Cached per unique SQL+parameters+maxRows combination.
+|-
+| <code>$wgODBCExternalDataIntegration</code> || boolean || <code>true</code> || Register as an <code>odbc_generic</code> connector for [[Extension:External Data|External Data]]. Must be set '''before''' <code>wfLoadExtension( 'ODBC' )</code>.
+|-
+| <code>$wgODBCMaxQueriesPerPage</code> || integer || <code>0</code> || Maximum <code>#odbc_query</code> calls per page render. <code>0</code> = unlimited.
+|-
+| <code>$wgODBCSlowQueryThreshold</code> || float || <code>0</code> || Execution time in seconds above which a query is logged to the <code>odbc-slow</code> log channel. <code>0</code> = disabled.
+|-
+| <code>$wgODBCMaxConnections</code> || integer || <code>10</code> || Maximum cached connections per PHP worker process. In PHP-FPM, total system connections = this × active workers.
+|}
+
+=== Permissions ===
+{| class="wikitable"
+! Right !! Description !! Default Groups
+|-
+| <code>odbc-query</code> || Use ODBC parser functions (<code>#odbc_query</code>, etc.) on wiki pages || <code>sysop</code>
+|-
+| <code>odbc-admin</code> || Access <code>Special:ODBCAdmin</code> for connection testing, table browsing, and test queries || <code>sysop</code>
+|}
+
+Grant to additional groups as needed:
+<syntaxhighlight lang="php">
+$wgGroupPermissions['user']['odbc-query'] = true;
+</syntaxhighlight>
+
+== Parser Functions ==
+
+The extension provides five parser functions that work as a pipeline: fetch data with <code>#odbc_query</code>, display with <code>#odbc_value</code>, <code>#for_odbc_table</code>, or <code>#display_odbc_table</code>, and optionally reset with <code>#odbc_clear</code>.
+
+All parser function names are '''case-insensitive''' — <code><nowiki>{{#odbc_query:}}</nowiki></code>, <code><nowiki>{{#ODBC_QUERY:}}</nowiki></code>, and <code><nowiki>{{#Odbc_Query:}}</nowiki></code> are all equivalent.
+
+=== <code>#odbc_query</code> — Fetch Data ===
+Executes a query and stores results in page-scoped variables.
+
+'''Prepared statement mode (recommended):'''
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=employees
+ | query=get_employee
+ | parameters=12345
+ | data=first=FirstName,last=LastName,dept=Department
+}}
+</syntaxhighlight>
+
+'''Composed query mode''' (requires <code>allow_queries</code> or <code>$wgODBCAllowArbitraryQueries</code>):
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=my-source
+ | from=Products
+ | data=name=ProductName,price=UnitPrice
+ | where=Active=1
+ | order by=ProductName ASC
+ | limit=50
+}}
+</syntaxhighlight>
+
+=== <code>#odbc_value</code> — Display a Single Value ===
+<syntaxhighlight lang="wikitext">
+{{#odbc_value: name}}
+{{#odbc_value: dept | (Unassigned) }}
+{{#odbc_value: name | N/A | 2 }}
+{{#odbc_value: name | N/A | last }}
+</syntaxhighlight>
+
+=== <code>#for_odbc_table</code> — Loop with Inline Wikitext ===
+<syntaxhighlight lang="wikitext">
+{| class="wikitable"
+! Name !! Department
+{{#for_odbc_table:
+{{!}}-
+{{!}} {{{name}}} {{!}}{{!}} {{{dept}}}
+}}
+|}
+</syntaxhighlight>
+
+=== <code>#display_odbc_table</code> — Loop with Wiki Template ===
+<syntaxhighlight lang="wikitext">
+{{#display_odbc_table: template=EmployeeRow }}
+</syntaxhighlight>
+Calls <code><nowiki>{{EmployeeRow|name=...|dept=...|email=...}}</nowiki></code> for each row.
+
+=== <code>#odbc_clear</code> — Clear Stored Data ===
+<syntaxhighlight lang="wikitext">
+{{#odbc_clear:}}
+{{#odbc_clear: name,dept}}
+</syntaxhighlight>
+
+For complete syntax, parameters, and worked examples, see [[Extension:ODBC/Guide|ODBC Guide]].
+
+== External Data Integration ==
+
+When [[Extension:External Data|External Data]] is installed and <code>$wgODBCExternalDataIntegration</code> is <code>true</code> (the default), ODBC registers an <code>odbc_generic</code> connector. This allows External Data's parser functions to query ODBC sources:
+
+<syntaxhighlight lang="php">
+$wgExternalDataSources['my-odbc'] = [
+    'type'     => 'odbc_generic',
+    'driver'   => 'MySQL ODBC 8.0 Unicode Driver',
+    'server'   => 'mysql-server.local',
+    'name'     => 'production_db',
+    'user'     => 'readonly',
+    'password' => 'secret',
+];
+</syntaxhighlight>
+
+<syntaxhighlight lang="wikitext">
+{{#get_db_data: db=my-odbc
+ | from=users
+ | data=username=user_name,email=user_email
+ | where=active=1
+}}
+</syntaxhighlight>
+
+{{note|text=To disable integration, set <code>$wgODBCExternalDataIntegration {{=}} false;</code> '''before''' <code>wfLoadExtension( 'ODBC' );</code> in {{ll|1=LocalSettings.php}}.}}
+
+== Admin Interface ==
+
+'''Special:ODBCAdmin''' (requires <code>odbc-admin</code> permission) provides:
+
+* '''Connection overview''' — View all configured sources with driver, server, and database details
+* '''Connection testing''' — Verify ODBC connectivity to each source
+* '''Table browser''' — List all tables available in a source
+* '''Column inspector''' — Inspect table schema and column types
+* '''Query runner''' — Execute SELECT queries and view results (non-SELECT blocked; SQL sanitization enforced)
+
+== Supported Databases ==
+
+Any database with an ODBC driver should work. Tested and known-compatible drivers:
+
+{| class="wikitable"
+! Database !! Common ODBC Driver
+|-
+| Microsoft SQL Server || <code>ODBC Driver 17 for SQL Server</code> / <code>ODBC Driver 18 for SQL Server</code>
+|-
+| MySQL / MariaDB || <code>MySQL ODBC 8.0 Unicode Driver</code>
+|-
+| PostgreSQL || <code>PostgreSQL Unicode</code>
+|-
+| Oracle || <code>Oracle in OraDB19Home1</code>
+|-
+| Microsoft Access || <code>Microsoft Access Driver (*.mdb, *.accdb)</code>
+|-
+| IBM DB2 || <code>IBM DB2 ODBC DRIVER</code>
+|-
+| SQLite || <code>SQLite3 ODBC Driver</code>
+|-
+| SAP HANA || <code>HDBODBC</code>
+|-
+| Snowflake || <code>SnowflakeDSIIDriver</code>
+|-
+| Amazon Redshift || <code>Amazon Redshift (x64)</code>
+|-
+| Progress OpenEdge || <code>Progress OpenEdge</code> (uses <code>host</code>/<code>db</code> keys)
+|}
+
+== Security ==
+
+=== Design Principles ===
+* '''Read-only by design''' — Only SELECT queries are permitted. DROP, DELETE, INSERT, UPDATE, EXEC, and 40+ other dangerous patterns are blocked by a multi-layered sanitizer.
+* '''Prepared statements''' — The recommended query mode; prevents SQL injection by design.
+* '''Identifier validation''' — Table and column names are validated against a strict regex (alphanumeric, underscores, and up to 3 dot-separated segments only).
+* '''Error sanitization''' — Credentials are stripped from ODBC error messages before display.
+* '''CSRF protection''' — All state-changing actions in <code>Special:ODBCAdmin</code> require a valid session token.
+* '''Connection pooling limits''' — Configurable per-worker connection cap with LRU eviction prevents resource exhaustion.
+
+=== Recommendations ===
+# Use '''prepared statements''' wherever possible
+# Keep <code>$wgODBCAllowArbitraryQueries = false</code> in production
+# Use a '''read-only database account''' (SELECT-only privileges)
+# Restrict <code>odbc-query</code> to trusted user groups
+# Secure <code>LocalSettings.php</code> file permissions (contains plain-text credentials)
+
+== Troubleshooting ==
+
+{| class="wikitable"
+! Problem !! Solution
+|-
+| "ODBC extension not found" || Install <code>ext-odbc</code>: <code>apt install php-odbc</code> (Debian/Ubuntu) or enable <code>extension=php_odbc.dll</code> (Windows). Restart the web server.
+|-
+| "Could not connect" || Verify the ODBC driver is installed (<code>odbcinst -q -d</code> on Linux, ODBC Data Source Administrator on Windows). Test the DSN outside of MediaWiki with <code>isql</code>. Check firewall rules, credentials, and server hostname.
+|-
+| "Arbitrary SQL not allowed" || Either define prepared statements (recommended), set <code>'allow_queries' => true</code> on the specific source, or set <code>$wgODBCAllowArbitraryQueries = true</code> globally.
+|-
+| "Invalid identifier" / "Illegal SQL pattern" || The query contains blocked characters or keywords. Use prepared statements, or ensure composed queries use only allowed patterns.
+|-
+| Query returns no results || Check column-name case sensitivity, verify <code>data=</code> mappings, review <code>where=</code> conditions, and use <code>Special:ODBCAdmin</code> to browse the table structure.
+|-
+| Performance issues || Enable caching (<code>$wgODBCCacheExpiry</code>), add database indexes, use <code>limit=</code>, and consider slow-query logging (<code>$wgODBCSlowQueryThreshold</code>).
+|}
+
+== Technical Details ==
+* '''Architecture:''' Modular PHP classes — <code>ODBCConnectionManager</code> (connection pooling, DSN construction, LRU eviction), <code>ODBCQueryRunner</code> (query execution, SQL sanitization), <code>ODBCParserFunctions</code> (parser function implementations), <code>EDConnectorOdbcGeneric</code> (External Data bridge), <code>SpecialODBCAdmin</code> (admin interface).
+* '''Stability:''' 242 PHPUnit tests with PHPStan level 3 static analysis and MediaWiki code style enforcement via PHP_CodeSniffer.
+* '''CI:''' GitHub Actions pipeline with PHP syntax lint (7.4–8.4), PHPUnit, PHPStan, PHPCS, and release-readiness checks.
+
+== See also ==
+* [[Extension:ODBC/Guide]] — Detailed usage guide with complete syntax reference and examples
+* [https://github.com/slickdexic/ODBC/blob/main/CHANGELOG.md Full Changelog]
+* [https://github.com/slickdexic/ODBC/wiki Project Wiki]
+* [[Extension:External Data]] — Complementary extension for CSV, JSON, LDAP, and other data sources

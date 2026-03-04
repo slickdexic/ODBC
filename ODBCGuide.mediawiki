@@ -1,0 +1,448 @@
+__NOTOC__
+= Parser Function Syntax =
+
+The ODBC extension provides five parser functions that work as a pipeline:
+
+# '''<code><nowiki>{{#odbc_query:}}</nowiki></code>''' — Fetch data from an ODBC data source
+# '''<code><nowiki>{{#odbc_value:}}</nowiki></code>''' — Display a single value from the result set
+# '''<code><nowiki>{{#for_odbc_table:}}</nowiki></code>''' — Loop over all rows with inline wikitext
+# '''<code><nowiki>{{#display_odbc_table:}}</nowiki></code>''' — Loop over all rows using a wiki template
+# '''<code><nowiki>{{#odbc_clear:}}</nowiki></code>''' — Clear stored data between queries
+
+All parser function names are '''case-insensitive''' from v1.0.3 onwards — <code><nowiki>{{#odbc_query:}}</nowiki></code>, <code><nowiki>{{#ODBC_QUERY:}}</nowiki></code>, and <code><nowiki>{{#Odbc_Query:}}</nowiki></code> are all equivalent.
+
+= Fetching Data — <code>#odbc_query</code> =
+
+== Prepared Statement Mode (recommended) ==
+
+Prepared statements are defined in <code>$wgODBCSources</code> in <code>LocalSettings.php</code> and are the safest way to query:
+
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=employees
+ | query=get_employee
+ | parameters=12345
+ | data=first=FirstName,last=LastName,dept=Department
+}}
+</syntaxhighlight>
+
+== Composed Query Mode ==
+
+{{Warning|text=Composed queries require <code>allow_queries {{=}} true</code> on the source or <code>$wgODBCAllowArbitraryQueries {{=}} true</code> globally. Only enable for trusted data sources.}}
+
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=my-source
+ | from=Products
+ | data=name=ProductName,price=UnitPrice
+ | where=Active=1
+ | order by=ProductName ASC
+ | limit=50
+}}
+</syntaxhighlight>
+
+== Parameters ==
+{| class="wikitable"
+! Parameter !! Required !! Mode !! Description
+|-
+| <code>source=</code> || Yes || Both || The source ID key from <code>$wgODBCSources</code>. Also accepted as the first positional argument.
+|-
+| <code>data=</code> || No || Both || Comma-separated <code>localVar=DBColumn</code> mappings. If omitted, <code>SELECT *</code> is issued and all columns are stored under their lowercase names.
+|-
+| <code>query=</code> || Prepared only || Prepared || Name of a prepared statement defined in the source's <code>prepared</code> config. Also accepted as <code>prepared=</code>.
+|-
+| <code>parameters=</code> || Conditional || Prepared || Values to bind to the <code>?</code> placeholders. Multiple values split by the <code>separator=</code> delimiter (default: <code>,</code>).
+|-
+| <code>separator=</code> || No || Prepared || Delimiter for splitting <code>parameters=</code>. Default: <code>,</code>. Use a different character when parameter values contain commas.
+|-
+| <code>from=</code> || Composed only || Composed || <code>FROM</code> clause table name(s).
+|-
+| <code>where=</code> || No || Composed || <code>WHERE</code> clause conditions. Subject to SQL sanitizer.
+|-
+| <code>order by=</code> || No || Composed || <code>ORDER BY</code> clause.
+|-
+| <code>group by=</code> || No || Composed || <code>GROUP BY</code> clause.
+|-
+| <code>having=</code> || No || Composed || <code>HAVING</code> clause. '''Requires <code>group by=</code>''' — using <code>having=</code> without <code>group by=</code> returns an error.
+|-
+| <code>limit=</code> || No || Both || Maximum rows to return. Cannot exceed <code>$wgODBCMaxRows</code>.
+|-
+| <code>null_value=</code> || No || Both || String to substitute for database NULL values. Default: <code>''</code> (empty string). Use e.g. <code>null_value=N/A</code> to distinguish NULLs from empty strings. (v1.5.0+)
+|-
+| <code>suppress error</code> || No || Both || If present, suppresses error messages on failure — returns empty output instead.
+|}
+
+== Data Mappings — <code>data=</code> ==
+The <code>data=</code> parameter maps database column names to local variable names:
+
+<syntaxhighlight lang="wikitext">
+data=name=FullName,dept=DepartmentName,salary=Salary
+</syntaxhighlight>
+
+'''Key rules:'''
+* <code>name</code>, <code>dept</code>, and <code>salary</code> become the variable names used in <code>{{{name}}}</code>, <code>{{{dept}}}</code>, <code>{{{salary}}}</code> in display functions.
+* '''Both sides are normalized to lowercase internally''' — <code>data=Name=FullName</code> stores under <code>name</code>. Only <code>{{{name}}}</code> will match, not <code>{{{Name}}}</code>.
+* The DB column match is case-insensitive — <code>FullName</code> matches <code>fullname</code> or <code>FULLNAME</code>.
+* Mappings longer than 256 characters are silently dropped.
+
+== Examples ==
+
+=== Prepared statement with multiple parameters ===
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=employees
+ | query=search
+ | parameters=Engineering,Senior%
+ | data=id=EmployeeID,name=FullName,title=Title
+}}
+</syntaxhighlight>
+
+=== Custom separator for values containing commas ===
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=employees
+ | query=employee_by_name
+ | parameters=Smith, John;42
+ | separator=;
+ | data=id=EmployeeID,dept=Department
+}}
+</syntaxhighlight>
+
+=== Composed query with multiple clauses ===
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=public-catalogue
+ | from=Categories
+ | data=id=CategoryID,catname=CategoryName
+ | where=Active=1
+ | order by=CategoryName ASC
+ | limit=20
+}}
+</syntaxhighlight>
+
+=== NULL value handling ===
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=hr-db
+ | query=all_employees
+ | data=name=FullName,phone=PhoneNumber
+ | null_value=—
+}}
+</syntaxhighlight>
+Any database NULL in the <code>PhoneNumber</code> column will display as "—" instead of an empty cell.
+
+= Displaying Single Values — <code>#odbc_value</code> =
+
+Outputs the value of a stored variable for a specific row.
+
+== Syntax ==
+<syntaxhighlight lang="wikitext">
+{{#odbc_value: variableName }}
+{{#odbc_value: variableName | defaultValue }}
+{{#odbc_value: variableName | defaultValue | rowSelector }}
+</syntaxhighlight>
+
+== Parameters ==
+{| class="wikitable"
+! Parameter !! Required !! Description
+|-
+| First positional || Yes || Variable name (as defined in <code>data=</code>).
+|-
+| Second positional || No || Default text if the variable has no value or the row is out of range.
+|-
+| Third positional || No || Row selector (see below). Omit for first row.
+|}
+
+=== Row Selector Values ===
+{| class="wikitable"
+! Value !! Meaning
+|-
+| ''(omitted or empty)'' || First row (default)
+|-
+| <code>1</code>, <code>2</code>, <code>3</code>, … || 1-indexed row number
+|-
+| <code>last</code> || Final row in the result set
+|-
+| <code>row=N</code> or <code>row=last</code> || Named-parameter alias for the above
+|}
+
+Out-of-range integers silently return the default value.
+
+== Examples ==
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=hr-db | query=employee_by_id | parameters=42
+ | data=name=FullName,dept=Department }}
+
+'''Name:''' {{#odbc_value: name }}
+'''Department:''' {{#odbc_value: dept | (Unassigned) }}
+</syntaxhighlight>
+
+<syntaxhighlight lang="wikitext">
+<!-- Access specific rows of a multi-row result: -->
+{{#odbc_query: source=hr-db | query=top_earners
+ | data=name=EmpName,salary=Salary }}
+
+Highest earner: {{#odbc_value: name | (none) | 1 }}
+Second highest: {{#odbc_value: name | (none) | 2 }}
+Lowest of top-10: {{#odbc_value: name | (none) | last }}
+</syntaxhighlight>
+
+{{Tip|text=For iterating over all rows, <code>#for_odbc_table</code> or <code>#display_odbc_table</code> are more concise. Use <code>#odbc_value</code> with a row selector when you need to cherry-pick specific rows by position.}}
+
+= Looping with Inline Wikitext — <code>#for_odbc_table</code> =
+
+Iterates over all stored rows and renders an inline wikitext template for each. Variable values are accessed using <code>{{{variableName}}}</code> triple-brace syntax (always lowercase).
+
+== Syntax ==
+<syntaxhighlight lang="wikitext">
+{{#for_odbc_table:
+  wikitext template using {{{variableName}}}
+}}
+</syntaxhighlight>
+
+== Examples ==
+
+=== Wikitable ===
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=products | from=Products
+ | data=name=ProductName,price=UnitPrice | order by=ProductName }}
+
+{| class="wikitable"
+! Product !! Price
+{{#for_odbc_table:
+{{!}}-
+{{!}} {{{name}}} {{!}}{{!}} ${{{price}}}
+}}
+|}
+
+{{#odbc_clear:}}
+</syntaxhighlight>
+
+=== Bulleted list ===
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=hr-db | query=dept_roster
+ | parameters=Engineering | data=name=FullName,email=Email }}
+
+* {{#for_odbc_table: [[User:{{{name}}}|{{{name}}}]] &lt;{{{email}}}&gt; }}
+
+{{#odbc_clear:}}
+</syntaxhighlight>
+
+{{Note|text=Use <code><nowiki>{{!}}</nowiki></code> to produce a literal pipe <code>{{!}}</code> inside <code>#for_odbc_table</code>, since <code>{{!}}</code> is a template parameter separator in MediaWiki wikitext.}}
+
+= Looping with a Wiki Template — <code>#display_odbc_table</code> =
+
+Iterates over all stored rows and calls a wiki template for each row, passing all stored variables as named parameters. This separates the query from the display logic.
+
+== Syntax ==
+<syntaxhighlight lang="wikitext">
+{{#display_odbc_table: template=TemplateName }}
+</syntaxhighlight>
+
+== How it Works ==
+For each row, the extension calls:
+<syntaxhighlight lang="wikitext">
+{{TemplateName | localvar1=value1 | localvar2=value2 | ... }}
+</syntaxhighlight>
+
+The template at <code>Template:TemplateName</code> accesses values with <code>{{{localvar1}}}</code>, <code>{{{localvar2}}}</code>, etc. — '''always lowercase'''.
+
+== Example ==
+
+'''Template:ProductCard''' (<code>Template:ProductCard</code>):
+<syntaxhighlight lang="wikitext">
+<div class="product-card">
+'''[[Product:{{{name}}}|{{{name}}}]]'''
+Price: ${{{price}}}
+Category: {{{cat}}}
+</div>
+</syntaxhighlight>
+
+'''Wiki page:'''
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=products
+ | query=active_products
+ | data=name=ProductName,price=UnitPrice,cat=CategoryName
+}}
+
+{{#display_odbc_table: template=ProductCard }}
+
+{{#odbc_clear:}}
+</syntaxhighlight>
+
+= Clearing Stored Data — <code>#odbc_clear</code> =
+
+Clears variables stored by previous <code>#odbc_query</code> calls.
+
+== Syntax ==
+<syntaxhighlight lang="wikitext">
+{{#odbc_clear:}}
+{{#odbc_clear: var1,var2 }}
+</syntaxhighlight>
+
+{| class="wikitable"
+! Syntax !! Effect
+|-
+| <code><nowiki>{{#odbc_clear:}}</nowiki></code> || Clear '''all''' stored variables
+|-
+| <code><nowiki>{{#odbc_clear: name,dept}}</nowiki></code> || Clear only <code>name</code> and <code>dept</code>
+|}
+
+== When to Use ==
+* '''Always''' call <code><nowiki>{{#odbc_clear:}}</nowiki></code> after rendering a result set before running a second <code>#odbc_query</code> on the same page. Without clearing, old and new data may merge.
+* When only displaying one result set per page, the clear is optional (data is discarded at the end of the page render), but it is good practice.
+
+= Multi-Query Pages =
+
+You can call <code>#odbc_query</code> multiple times on the same page. Use <code><nowiki>{{#odbc_clear:}}</nowiki></code> between logically separate queries to avoid mixing data:
+
+<syntaxhighlight lang="wikitext">
+== Active Products ==
+
+{{#odbc_query: source=products | query=active_products
+ | data=name=ProductName,price=UnitPrice }}
+{{#for_odbc_table: * {{{name}}} — ${{{price}}} }}
+{{#odbc_clear:}}
+
+== Discontinued Products ==
+
+{{#odbc_query: source=products | query=discontinued
+ | data=name=ProductName,price=UnitPrice }}
+{{#for_odbc_table: * <s>{{{name}}}</s> }}
+{{#odbc_clear:}}
+</syntaxhighlight>
+
+= Complete Worked Example =
+
+== Goal ==
+Build an employee directory page that shows:
+* A department table for all employees
+* A summary for the Engineering team specifically
+
+== Configuration ==
+'''<code>LocalSettings.php</code>:'''
+<syntaxhighlight lang="php">
+wfLoadExtension( 'ODBC' );
+
+$wgODBCSources['hr'] = [
+    'driver'   => 'ODBC Driver 17 for SQL Server',
+    'server'   => 'hr-server,1433',
+    'database' => 'HR',
+    'user'     => 'wiki_hr_ro',
+    'password' => 'readonly!',
+    'prepared' => [
+        'all_employees'  => 'SELECT FirstName, LastName, Department, Email '
+                          . 'FROM Employees ORDER BY LastName, FirstName',
+        'dept_employees' => 'SELECT FirstName, LastName, Department, Email '
+                          . 'FROM Employees WHERE Department = ? ORDER BY LastName',
+    ],
+];
+</syntaxhighlight>
+
+== Template ==
+'''<code>Template:EmployeeRow</code>:'''
+<syntaxhighlight lang="wikitext">
+|-
+| {{{firstname}}} {{{lastname}}} || {{{department}}} || [{{{email}}} email]
+</syntaxhighlight>
+
+{{Note|text=Template parameter names '''must be lowercase''' because the ODBC extension normalizes all stored variable names to lowercase internally. <code>{{{FirstName}}}</code> will not match — use <code>{{{firstname}}}</code>.}}
+
+== Wiki Page ==
+<syntaxhighlight lang="wikitext">
+== All Employees ==
+
+{{#odbc_query: source=hr
+ | query=all_employees
+ | data=firstname=FirstName,lastname=LastName,department=Department,email=Email
+}}
+
+{| class="wikitable sortable"
+! First Name !! Last Name !! Department !! Contact
+{{#display_odbc_table: template=EmployeeRow }}
+|}
+
+{{#odbc_clear:}}
+
+== Engineering Team ==
+
+{{#odbc_query: source=hr
+ | query=dept_employees
+ | parameters=Engineering
+ | data=firstname=FirstName,lastname=LastName,department=Department,email=Email
+}}
+
+{| class="wikitable"
+! Name !! Email
+{{#for_odbc_table:
+{{!}}-
+{{!}} {{{firstname}}} {{{lastname}}} {{!}}{{!}} {{{email}}}
+}}
+|}
+
+{{#odbc_clear:}}
+</syntaxhighlight>
+
+= Behavior Notes =
+
+== Error Handling ==
+If a query fails (bad source ID, connection error, SQL syntax), an error message is displayed inline. Use <code>suppress error</code> to silence errors:
+<syntaxhighlight lang="wikitext">
+{{#odbc_query: source=my-source | query=get_data | suppress error }}
+</syntaxhighlight>
+
+== Query Limits ==
+* <code>$wgODBCMaxRows</code> caps the maximum rows returned by any single query (default: 1000).
+* <code>$wgODBCMaxQueriesPerPage</code> caps the total number of <code>#odbc_query</code> calls per page render (default: 0 = unlimited).
+* <code>limit=</code> on individual queries cannot exceed <code>$wgODBCMaxRows</code>.
+
+== Caching ==
+When <code>$wgODBCCacheExpiry</code> is set to a positive value, query results are cached per unique SQL+parameters+maxRows combination. There is no manual cache invalidation — entries expire automatically.
+
+== Security ==
+* '''Composed queries''' pass through a SQL sanitizer that blocks 40+ dangerous patterns (DROP, DELETE, INSERT, UPDATE, EXEC, xp_cmdshell, etc.).
+* '''Identifiers''' (table and column names) are validated: only alphanumeric characters, underscores, and up to 3 dot-separated segments (e.g. <code>schema.table.column</code>).
+* '''Prepared statements''' prevent SQL injection by design and are recommended for production use.
+
+= External Data Integration =
+
+When [[Extension:External Data|External Data]] is installed and <code>$wgODBCExternalDataIntegration</code> is <code>true</code>, the <code>odbc_generic</code> connector becomes available:
+
+<syntaxhighlight lang="php">
+// Standalone External Data source:
+$wgExternalDataSources['my-odbc'] = [
+    'type'     => 'odbc_generic',
+    'driver'   => 'MySQL ODBC 8.0 Unicode Driver',
+    'server'   => 'mysql-server.local',
+    'name'     => 'production_db',
+    'user'     => 'readonly',
+    'password' => 'secret',
+];
+
+// OR reference an existing $wgODBCSources entry:
+$wgExternalDataSources['my-source'] = [
+    'type'         => 'odbc_generic',
+    'odbc_source'  => 'my-source',
+    'user'         => '',
+    'password'     => '',
+];
+</syntaxhighlight>
+
+'''Usage with External Data parser functions:'''
+<syntaxhighlight lang="wikitext">
+{{#get_db_data: db=my-odbc
+ | from=users
+ | data=username=user_name,email=user_email
+ | where=active=1
+ | limit=10
+}}
+
+{| class="wikitable"
+! Username !! Email
+{{#for_external_table:
+{{!}}-
+{{!}} {{{username}}} {{!}}{{!}} {{{email}}}
+}}
+|}
+</syntaxhighlight>
+
+{{Note|text=To disable integration, set <code>$wgODBCExternalDataIntegration {{=}} false;</code> '''before''' <code>wfLoadExtension( 'ODBC' );</code>.}}
+
+= See Also =
+* [[Extension:ODBC]] — Main extension documentation
+* [[Extension:External Data]] — Complementary extension for CSV, JSON, LDAP, and other data sources
+* [https://github.com/slickdexic/ODBC/wiki Project Wiki]
