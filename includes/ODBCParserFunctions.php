@@ -304,11 +304,11 @@ class ODBCParserFunctions {
 			$map = [];
 			foreach ( $storedData as $varName => $values ) {
 				$value = (string)( $values[$i] ?? '' );
-				// Prevent fake {{{varName}}} placeholders in database values from being
-				// interpreted as further substitutions. strtr() processes in a single
-				// pass so there is no chaining risk, but the escaping is still needed
-				// to protect against literal triple-brace sequences in the data.
-				$escapedValue = str_replace( '{{{', '&#123;&#123;&#123;', $value );
+				// Escape the value so that pipe chars, template-close sequences,
+				// and triple-brace sequences in database values cannot corrupt
+				// wikitext when the output is nested inside template calls
+				// (KI-112 / P2-113).
+				$escapedValue = self::escapeTemplateParam( $value );
 				$map['{{{' . $varName . '}}}'] = $escapedValue;
 			}
 			$output .= strtr( $templateText, $map );

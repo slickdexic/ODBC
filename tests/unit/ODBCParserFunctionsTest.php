@@ -298,6 +298,30 @@ class ODBCParserFunctionsTest extends TestCase {
 		$this->assertSame( 'val&#123;&#123;&#123;param&#125;&#125;}end', $result );
 	}
 
+	/**
+	 * @covers ODBCParserFunctions
+	 */
+	public function testEscapeTemplateParamMultiplePipes(): void {
+		$result = self::callPrivateStatic( 'escapeTemplateParam', [ 'A|B|C' ] );
+		$this->assertSame( 'A{{!}}B{{!}}C', $result );
+	}
+
+	/**
+	 * Verifies that all three dangerous sequences are escaped in a single value.
+	 * This is the same escaping now applied in forOdbcTable() (KI-112).
+	 *
+	 * @covers ODBCParserFunctions
+	 */
+	public function testEscapeTemplateParamCombinedDangerousSequences(): void {
+		$input = 'val|with}}pipes{{{and}}}braces';
+		$result = self::callPrivateStatic( 'escapeTemplateParam', [ $input ] );
+		// '|' → '{{!}}', '}}' → '&#125;&#125;', '{{{' → '&#123;&#123;&#123;'
+		$this->assertSame(
+			'val{{!}}with&#125;&#125;pipes&#123;&#123;&#123;and&#125;&#125;}braces',
+			$result
+		);
+	}
+
 	// ── formatError() ───────────────────────────────────────────────────────
 
 	/**
