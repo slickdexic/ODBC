@@ -281,4 +281,304 @@ class ODBCConnectionManagerTest extends TestCase {
 		] );
 		$this->assertSame( [], $errors );
 	}
+
+	// ── buildConnectionString() — additional edge cases ─────────────────────
+
+	/**
+	 * @covers ODBCConnectionManager::buildConnectionString
+	 */
+	public function testBuildConnectionStringWithPortOnly(): void {
+		$config = [
+			'driver' => 'MySQL ODBC 8.0 Driver',
+			'server' => 'localhost',
+			'port'   => 3307,
+		];
+		$result = ODBCConnectionManager::buildConnectionString( $config );
+		$this->assertStringContainsString( 'Port=3307', $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::buildConnectionString
+	 */
+	public function testBuildConnectionStringDoesNotIncludeUserPassword(): void {
+		// buildConnectionString() should NOT embed credentials — those are passed separately.
+		$config = [
+			'driver'   => 'SQL Server',
+			'server'   => 'localhost',
+			'user'     => 'sa',
+			'password' => 'secret',
+		];
+		$result = ODBCConnectionManager::buildConnectionString( $config );
+		$this->assertStringNotContainsString( 'secret', $result );
+		$this->assertStringNotContainsString( 'sa', $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::buildConnectionString
+	 */
+	public function testBuildConnectionStringBraceWrapsValuesWithBraces(): void {
+		$config = [
+			'driver' => 'SQL Server',
+			'server' => 'host{weird}name',
+		];
+		$result = ODBCConnectionManager::buildConnectionString( $config );
+		// Braces in server value should be wrapped.
+		$this->assertStringContainsString( 'Server={host{weird}}name}', $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::buildConnectionString
+	 */
+	public function testBuildConnectionStringConnectionStringPreferred(): void {
+		// When both connection_string and driver are set, connection_string wins.
+		$config = [
+			'connection_string' => 'Driver={X};Server=direct',
+			'driver'            => 'OtherDriver',
+			'server'            => 'other-host',
+		];
+		$this->assertSame( 'Driver={X};Server=direct',
+			ODBCConnectionManager::buildConnectionString( $config ) );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::buildConnectionString
+	 */
+	public function testBuildConnectionStringDsnParamsOverwrite(): void {
+		// dsn_params can add arbitrary key-value pairs.
+		$config = [
+			'driver'     => 'PostgreSQL Unicode',
+			'server'     => 'pghost',
+			'database'   => 'mydb',
+			'dsn_params' => [
+				'SSLMode' => 'require',
+			],
+		];
+		$result = ODBCConnectionManager::buildConnectionString( $config );
+		$this->assertStringContainsString( 'SSLMode=require', $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::buildConnectionString
+	 */
+	public function testBuildConnectionStringTrustCertificateFalseNotIncluded(): void {
+		$config = [
+			'driver'            => 'ODBC Driver 18 for SQL Server',
+			'server'            => 'localhost',
+			'trust_certificate' => false,
+		];
+		$result = ODBCConnectionManager::buildConnectionString( $config );
+		$this->assertStringNotContainsString( 'TrustServerCertificate', $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::buildConnectionString
+	 */
+	public function testBuildConnectionStringOnlyDriverNoServer(): void {
+		// A driver-only config (no server/host/database) should produce only the Driver= part.
+		$config = [ 'driver' => 'MyDriver' ];
+		$this->assertSame( 'Driver={MyDriver}', ODBCConnectionManager::buildConnectionString( $config ) );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::buildConnectionString
+	 */
+	public function testBuildConnectionStringPortAsString(): void {
+		// Port can be provided as string or int — both should work.
+		$config = [
+			'driver' => 'MySQL ODBC 8.0 Driver',
+			'server' => 'localhost',
+			'port'   => '3306',
+		];
+		$result = ODBCConnectionManager::buildConnectionString( $config );
+		$this->assertStringContainsString( 'Port=3306', $result );
+	}
+
+	// ── validateConfig() — additional edge cases ────────────────────────────
+
+	/**
+	 * @covers ODBCConnectionManager::validateConfig
+	 */
+	public function testValidateConfigConnectionStringIsValid(): void {
+		$errors = ODBCConnectionManager::validateConfig( [
+			'connection_string' => 'Driver={X};Server=y',
+		] );
+		$this->assertSame( [], $errors );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::validateConfig
+	 */
+	public function testValidateConfigDriverWithHostAndDatabase(): void {
+		$errors = ODBCConnectionManager::validateConfig( [
+			'driver'   => 'PostgreSQL',
+			'host'     => 'pghost',
+			'database' => 'mydb',
+		] );
+		$this->assertSame( [], $errors );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::validateConfig
+	 */
+	public function testValidateConfigOnlyServerNoDriverReturnsError(): void {
+		// server without driver or dsn is invalid.
+		$errors = ODBCConnectionManager::validateConfig( [
+			'server' => 'localhost',
+		] );
+		$this->assertNotEmpty( $errors );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::validateConfig
+	 */
+	public function testValidateConfigReturnsMultipleErrors(): void {
+		// driver without server should return at least one error about server/host.
+		$errors = ODBCConnectionManager::validateConfig( [
+			'driver' => 'SomeDriver',
+		] );
+		$this->assertNotEmpty( $errors );
+		$hasServerError = false;
+		foreach ( $errors as $error ) {
+			if ( stripos( $error, 'server' ) !== false || stripos( $error, 'host' ) !== false ) {
+				$hasServerError = true;
+			}
+		}
+		$this->assertTrue( $hasServerError, 'Expected an error about missing server/host' );
+	}
+
+	// ── withOdbcWarnings() ──────────────────────────────────────────────────
+
+	/**
+	 * @covers ODBCConnectionManager::withOdbcWarnings
+	 */
+	public function testWithOdbcWarningsReturnsCallableResult(): void {
+		$result = ODBCConnectionManager::withOdbcWarnings( static fn () => 42 );
+		$this->assertSame( 42, $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::withOdbcWarnings
+	 */
+	public function testWithOdbcWarningsReturnsArray(): void {
+		$result = ODBCConnectionManager::withOdbcWarnings( static fn () => [ 'a' => 1 ] );
+		$this->assertSame( [ 'a' => 1 ], $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::withOdbcWarnings
+	 */
+	public function testWithOdbcWarningsReturnsNull(): void {
+		$result = ODBCConnectionManager::withOdbcWarnings( static function () {
+			// Void-like callable.
+		} );
+		$this->assertNull( $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::withOdbcWarnings
+	 */
+	public function testWithOdbcWarningsPropagatesMWException(): void {
+		// An MWException thrown inside the callable should propagate outward.
+		$this->expectException( MWException::class );
+		$this->expectExceptionMessage( 'inner error' );
+		ODBCConnectionManager::withOdbcWarnings( static function () {
+			throw new MWException( 'inner error' );
+		} );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::withOdbcWarnings
+	 */
+	public function testWithOdbcWarningsRestoresHandlerAfterSuccess(): void {
+		$before = set_error_handler( static fn () => true );
+		restore_error_handler();
+
+		ODBCConnectionManager::withOdbcWarnings( static fn () => 'ok' );
+
+		$after = set_error_handler( static fn () => true );
+		restore_error_handler();
+
+		$this->assertSame( $before, $after, 'Error handler should be restored after success' );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager::withOdbcWarnings
+	 */
+	public function testWithOdbcWarningsRestoresHandlerAfterException(): void {
+		$before = set_error_handler( static fn () => true );
+		restore_error_handler();
+
+		try {
+			ODBCConnectionManager::withOdbcWarnings( static function () {
+				throw new MWException( 'test' );
+			} );
+		} catch ( MWException $e ) {
+			// Expected.
+		}
+
+		$after = set_error_handler( static fn () => true );
+		restore_error_handler();
+
+		$this->assertSame( $before, $after, 'Error handler should be restored after exception' );
+	}
+
+	// ── sanitizeErrorMessage() via reflection ───────────────────────────────
+
+	/**
+	 * @covers ODBCConnectionManager
+	 */
+	public function testSanitizeErrorMessageRemovesPassword(): void {
+		$result = self::callPrivateStatic( 'sanitizeErrorMessage', [
+			'Connection failed: PWD=MyS3cretP@ss;Server=host',
+		] );
+		$this->assertStringNotContainsString( 'MyS3cretP@ss', $result );
+		$this->assertStringContainsString( 'PWD=***', $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager
+	 */
+	public function testSanitizeErrorMessageRemovesUid(): void {
+		$result = self::callPrivateStatic( 'sanitizeErrorMessage', [
+			'Connection failed: UID=admin;PWD=secret;Server=host',
+		] );
+		$this->assertStringNotContainsString( 'admin', $result );
+		$this->assertStringContainsString( 'UID=***', $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager
+	 */
+	public function testSanitizeErrorMessagePreservesNonSensitiveContent(): void {
+		$result = self::callPrivateStatic( 'sanitizeErrorMessage', [
+			'Connection timeout: Server=myhost;Database=mydb',
+		] );
+		$this->assertStringContainsString( 'myhost', $result );
+		$this->assertStringContainsString( 'mydb', $result );
+	}
+
+	/**
+	 * @covers ODBCConnectionManager
+	 */
+	public function testSanitizeErrorMessageCaseInsensitivePassword(): void {
+		$result = self::callPrivateStatic( 'sanitizeErrorMessage', [
+			'Error: password=hunter2;server=x',
+		] );
+		$this->assertStringNotContainsString( 'hunter2', $result );
+	}
+
+	// ── Helper: invoke private static method via reflection ─────────────────
+
+	/**
+	 * Call a private/protected static method on ODBCConnectionManager.
+	 *
+	 * @param string $method Method name.
+	 * @param array $args Arguments to pass.
+	 * @return mixed Return value.
+	 */
+	private static function callPrivateStatic( string $method, array $args ) {
+		$ref = new ReflectionMethod( ODBCConnectionManager::class, $method );
+		$ref->setAccessible( true );
+		return $ref->invokeArgs( null, $args );
+	}
 }
