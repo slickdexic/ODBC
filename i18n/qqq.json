@@ -28,6 +28,8 @@
 	"odbc-ed-error-illegal": "Error message for the External Data connector when SQL injection patterns are detected.\n\nParameters:\n* $1 - the illegal pattern\n* $2 - the parameter context",
 	"odbc-error-invalid-token": "Error message when CSRF token validation fails.",
 	"odbc-test-success": "Success message when a connection test passes.\n\nParameters:\n* $1 - the source ID",
+	"odbcadmin": "{{doc-special|ODBCAdmin}}\nTitle shown on Special:SpecialPages listing.",
+	"odbc-admin-desc": "Description of Special:ODBCAdmin shown on Special:SpecialPages and other listings.",
 	"odbc-admin-title": "Title for the Special:ODBCAdmin page.",
 	"odbc-admin-intro": "Introductory text on the ODBC admin page.",
 	"odbc-admin-no-sources": "Message displayed when no ODBC sources are configured.",

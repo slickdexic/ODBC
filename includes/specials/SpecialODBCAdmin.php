@@ -26,6 +26,15 @@ class SpecialODBCAdmin extends SpecialPage {
 	}
 
 	/**
+	 * Return the group this special page belongs to on Special:SpecialPages.
+	 *
+	 * @return string
+	 */
+	protected function getGroupName() {
+		return 'wiki';
+	}
+
+	/**
 	 * @param string|null $par Subpage parameter.
 	 */
 	public function execute( $par ) {

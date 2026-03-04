@@ -32,6 +32,8 @@
 
 	"odbc-test-success": "Successfully connected to ODBC source \"$1\".",
 
+	"odbcadmin": "ODBC Data Source Administration",
+	"odbc-admin-desc": "Test connections, browse tables, and run test queries against configured ODBC data sources.",
 	"odbc-admin-title": "ODBC Data Source Administration",
 	"odbc-admin-intro": "The following ODBC data sources are configured in <code>$wgODBCSources</code>:",
 	"odbc-admin-no-sources": "No ODBC data sources are configured. Add entries to <code>$wgODBCSources</code> in LocalSettings.php.",
